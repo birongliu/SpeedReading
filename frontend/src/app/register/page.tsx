@@ -6,18 +6,16 @@ import { Suspense, useEffect } from "react";
 import AuthModal from "@/app/ui/auth-modal";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 
-function LoginPageContent() {
+function RegisterPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAuthenticated, isLoading } = useAuthSession();
-
   const returnTo = searchParams.get("from") || searchParams.get("redirect") || "/";
   const handleCancel = () => {
 
 
     router.replace(returnTo);
   };
-
   useEffect(() => {
     if (isAuthenticated) router.replace("/dashboard");
   }, [isAuthenticated, router]);
@@ -50,18 +48,25 @@ function LoginPageContent() {
             </span>
           </Link>
 
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
+          >
+            Back
+          </button>
         </div>
       </header>
 
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
         <div className="text-sm text-zinc-500">
-          {isLoading ? "Checking session..." : "Sign in to continue."}
+          {isLoading ? "Checking session..." : "Create an account to continue."}
         </div>
       </main>
 
       {!isLoading && !isAuthenticated ? (
         <AuthModal
-          initialMode="login"
+          initialMode="signup"
           isOpen
           onClose={handleCancel}
           successRedirectPath="/dashboard"
@@ -71,7 +76,7 @@ function LoginPageContent() {
   );
 }
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <Suspense
       fallback={
@@ -80,7 +85,7 @@ export default function LoginPage() {
         </div>
       }
     >
-      <LoginPageContent />
+      <RegisterPageContent />
     </Suspense>
   );
 }

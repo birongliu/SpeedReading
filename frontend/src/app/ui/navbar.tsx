@@ -49,6 +49,16 @@ export default function Navbar() {
     openAuth("signup");
   };
 
+  const handleGuestClick = () => {
+    if (isAuthenticated) {
+      setOpen(false);
+      router.push("/dashboard");
+      return;
+    }
+
+    router.push("/guest");
+  };
+
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -121,7 +131,7 @@ export default function Navbar() {
             </button>
             <button
               type="button"
-              onClick={handleSignupClick}
+              onClick={handleGuestClick}
               className="px-4 py-2 text-sm font-semibold rounded-lg bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500 transition-all duration-200 shadow-lg shadow-amber-900/40 hover:shadow-amber-900/60"
             >
               Get started free
@@ -193,7 +203,7 @@ export default function Navbar() {
             </button>
             <button
               type="button"
-              onClick={handleSignupClick}
+              onClick={handleGuestClick}
               className="w-full px-4 py-3 text-sm font-semibold rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-400 hover:to-orange-500 transition-all shadow-lg shadow-amber-900/40"
             >
               Get started free

@@ -15,6 +15,7 @@ type AuthModalProps = {
   initialMode: AuthMode;
   isOpen: boolean;
   onClose: () => void;
+  successRedirectPath?: string | null;
 };
 
 type AuthErrors = {
@@ -31,6 +32,7 @@ export default function AuthModal({
   initialMode,
   isOpen,
   onClose,
+  successRedirectPath,
 }: AuthModalProps) {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -146,7 +148,7 @@ export default function AuthModal({
 
       if (data.session) {
         onClose();
-        router.push('/dashboard');
+        router.push(successRedirectPath ?? '/dashboard');
         return;
       }
 
@@ -184,7 +186,7 @@ export default function AuthModal({
     }
 
     onClose();
-    router.push('/dashboard');
+    router.push(successRedirectPath ?? '/dashboard');
   };
 
   return (
