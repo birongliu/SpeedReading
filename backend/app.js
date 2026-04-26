@@ -1,9 +1,18 @@
-const express = require("express");
-const cors = require("cors");
-const { createClient } = require("@supabase/supabase-js");
-const dotenv = require("dotenv");
-const { PDFParse } = require("pdf-parse");
+import express from "express";
+import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
+import dotenv from "dotenv";
+import multer from "multer";
+import { convert } from "@opendataloader/pdf";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
+import crypto from "crypto";
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileSize: 50 * 1024 * 1024,
+}); // 50MB limit
 dotenv.config();
 
 const app = express();
@@ -20,39 +29,13 @@ const supabase =
 function chunkText(text, wordsPerChunk = 200) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   const chunks = [];
-  console.log(`Total words extracted: ${words.length}`, words);
+  console.log(`Total words extracted: ${words.length}`);
+
   for (let i = 0; i < words.length; i += wordsPerChunk) {
     chunks.push(words.slice(i, i + wordsPerChunk).join(" "));
   }
 
   return chunks;
-}
-
-function getWordsPerChunk(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 200;
-  }
-  return Math.floor(parsed);
-}
-
-function isPdfBytes(inputBuffer) {
-  if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
-    return false;
-  }
-
-  const pdfSignature = inputBuffer.subarray(0, 5).toString("utf8");
-  return pdfSignature === "%PDF-";
-}
-
-
-async function extractPdfText(pdfBuffer) {
-  try {
-   	const parser = new PDFParse(pdfBuffer);
-    return (await parser.getText()).text || "";
-  } catch {
-    console.warn("pdf-parse failed, falling back to basic PDF text extraction");
-  }
 }
 
 async function requireSupabaseAuth(req, res, next) {
@@ -100,53 +83,47 @@ app.get("/", (req, res) => {
 app.post(
   "/extract-text",
   requireSupabaseAuth,
-  express.raw({ type: "*/*", limit: "20mb" }),
+  upload.single("file"),
   async (req, res) => {
-    const contentType = (
-      req.headers["content-type"] || "application/octet-stream"
-    ).toLowerCase();
-    const wordsPerChunk = getWordsPerChunk(req.query.wordsPerChunk);
-
-    if (!contentType.startsWith("application/pdf")) {
-      return res.status(415).json({
-        error:
-          "Only PDF blobs are supported. Use Content-Type: application/pdf.",
-      });
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
     }
 
-    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Input must be a non-empty PDF blob" });
+    if (file.mimetype !== "application/pdf") {
+      return res.status(415).json({ error: "Only PDF files are supported" });
     }
-
-
-    let text = "";
-
-    try {
-      text = await extractPdfText(req.body);
-    } catch {
-      return res.status(400).json({ error: "Failed to parse PDF blob" });
-    }
-
-    if (!text) {
-      return res
-        .status(400)
-        .json({ error: "Could not extract text from PDF blob" });
-    }
-
-    const chunks = chunkText(text, wordsPerChunk);
-
-    return res.json({
-      userId: req.user.id,
-      text,
-      chunkCount: chunks.length,
-      wordsPerChunk,
-      chunks,
-    });
+    const hello = await processPdfBytes(file.buffer, file.originalname)
+    console.log("Extracted content:", hello);
   },
 );
 
 app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
+
+async function processPdfBytes(buffer, filename, format = "text") {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "speedreading-pdf-"));
+
+  try {
+    const safeFilename = `${crypto.randomUUID()}-${
+      path.basename(`${filename}.txt`) || "document.pdf"
+    }`;
+
+    const filepath = path.join(tmpDir, safeFilename);
+    await fs.writeFile(filepath, Buffer.from(buffer));
+
+    const x = await convert([filepath], {
+      outputDir: tmpDir,
+      format: format,
+    });
+
+    console.log(`Extracted text for ${filename}:`, x);
+    return x;
+  } catch (error) {
+    console.error("Error processing PDF:", error);
+    throw error;
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
+  }
+}

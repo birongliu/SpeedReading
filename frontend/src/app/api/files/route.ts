@@ -38,7 +38,7 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ error: "File not found" }, { status: 404 });
   }
   // Download from Supabase Storage
-  let fileBytes: ArrayBuffer | null = null;
+  let fileBytes: Uint8Array<ArrayBuffer> | null = null;
   let fileError: string | null = null;
   const original_filename: string = fileMeta.original_filename;
 
@@ -50,7 +50,7 @@ export async function GET(request: Request): Promise<Response> {
     if (downloadError) {
       fileError = downloadError.message;
     } else if (fileData) {
-      fileBytes = await fileData.arrayBuffer();
+      fileBytes = await fileData.bytes();
     }
   } catch (err) {
     fileError = err instanceof Error ? err.message : "Failed to download file";

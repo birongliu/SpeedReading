@@ -49,15 +49,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const form = new FormData();
+    form.append("file", file, file.name);
+
     const backendResponse = await fetch(
       `${BACKEND_URL}/extract-text?wordsPerChunk=200`,
       {
         method: "POST",
         headers: {
           Authorization: authHeader,
-          "Content-Type": "application/pdf",
         },
-        body: Buffer.from(await file.arrayBuffer()),
+        body: form
       },
     );
 
