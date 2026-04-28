@@ -1,9 +1,9 @@
-const express = require("express");
-const cors = require("cors");
-const { createClient } = require("@supabase/supabase-js");
-const dotenv = require("dotenv");
-const { PDFParse } = require("pdf-parse");
-
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+const dotenv = require('dotenv');
+const pdfParse = require('pdf-parse');
+const { extractText: extractTextWithUnpdf, getDocumentProxy } = require('unpdf');
 dotenv.config();
 
 const app = express();
@@ -53,13 +53,25 @@ function isPdfBytes(inputBuffer) {
 
 async function extractPdfText(pdfBuffer) {
   try {
-   	const parser = new PDFParse(pdfBuffer);
-    return (await parser.getText()).text || "";
-  } catch {
-    console.warn("pdf-parse failed, falling back to basic PDF text extraction");
+    const data = await pdfParse(pdfBuffer);
+    console.log(
+      `Pages: ${data.numpages}, extracted text length: ${data.text.length}`,
+    );
+    return data.text || '';
+  } catch (error) {
+    console.warn(
+      'pdf-parse failed, trying unpdf fallback:',
+      error instanceof Error ? error.message : error,
+    );
+
+    const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
+    const result = await extractTextWithUnpdf(pdf, { mergePages: true });
+    console.log(
+      `unpdf pages: ${result.totalPages}, extracted text length: ${result.text.length}`,
+    );
+    return result.text || '';
   }
 }
-
 async function requireSupabaseAuth(req, res, next) {
   if (!supabase) {
     return res.status(500).json({
