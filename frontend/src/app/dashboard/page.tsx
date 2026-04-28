@@ -358,32 +358,39 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(8);
 
-      if (documentsError) {
-        throw new Error(documentsError.message);
+      if (sessionsError) {
+        throw new Error(sessionsError.message);
       }
 
-      const documentRows = (documents ?? []) as DocumentRow[];
-      const documentIds = documentRows.map((document) => document.id);
+      const sessionRows = (sessions ?? []) as RecentSessionRow[];
+      const documentIds = Array.from(
+        new Set(
+          sessionRows
+            .map((session) => session.document_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
 
       if (!documentIds.length) {
         setRecentDocuments([]);
         return;
       }
 
-      const { data: sessions, error: sessionsError } = await supabase
-        .from('reading_sessions')
-        .select(
-          'id, document_id, words_read, achieved_wpm, target_wpm, completed, created_at',
-        )
-        .eq('user_id', currentUser.id)
-        .in('document_id', documentIds)
-        .order('created_at', { ascending: false });
+      const { data: documents, error: documentsError } = await supabase
+        .from('documents')
+        .select('id, original_filename')
+        .in('id', documentIds);
 
-      if (sessionsError) {
-        throw new Error(sessionsError.message);
+      if (documentsError) {
+        throw new Error(documentsError.message);
       }
 
-      const sessionRows = (sessions ?? []) as RecentSessionRow[];
+      const documentsById = new Map(
+        ((documents ?? []) as DocumentRow[]).map((document) => [
+          document.id,
+          document,
+        ]),
+      );
 
       const latestSessionsByDocumentId = new Map<string, RecentSessionRow>();
       sessionRows.forEach((session) => {

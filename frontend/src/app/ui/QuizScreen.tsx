@@ -30,7 +30,7 @@ export function QuizScreen({ chunkTitle, wpm, questions, onSubmit }: Props) {
         </h1>
         <p className="mt-2 text-sm leading-6 text-zinc-400">
           You just read &ldquo;{chunkTitle}&rdquo; at roughly{" "}
-          <strong className="font-semibold text-amber-300">{wpm} wpm</strong>.
+          <strong className="font-medium text-gray-700">{wpm} wpm</strong>.
           Answer these questions to test your retention.
         </p>
       </div>
@@ -44,7 +44,7 @@ export function QuizScreen({ chunkTitle, wpm, questions, onSubmit }: Props) {
             <p className="mb-3 text-sm font-semibold leading-6 text-zinc-100">
               {qi + 1}. {q.q}
             </p>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {q.options.map((opt, oi) => (
                 <label
                   key={oi}
@@ -66,6 +66,9 @@ export function QuizScreen({ chunkTitle, wpm, questions, onSubmit }: Props) {
                 </label>
               ))}
             </div>
+            {qi < questions.length - 1 && (
+              <hr className="mt-5 border-gray-100" />
+            )}
           </div>
         ))}
       </div>

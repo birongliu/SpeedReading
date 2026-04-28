@@ -487,7 +487,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                 <h2 className="text-2xl font-bold text-white">
                   Comprehension saved
                 </h2>
-                <p className="mt-3 text-lg font-semibold text-amber-300">
+                <p className="mt-3 text-lg font-semibold text-blue-700">
                   Score: {quizScore}%
                 </p>
                 <button
