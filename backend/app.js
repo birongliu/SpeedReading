@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const dotenv = require('dotenv');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 dotenv.config();
 
 const app = express();
@@ -49,7 +49,7 @@ function isPdfBytes(inputBuffer) {
 }
 
 async function extractPdfText(pdfBuffer) {
-  const data = await pdfParse(pdfBuffer);
+  const data = new PDFParse({ data: pdfBuffer });
   console.log(
     `Pages: ${data.numpages}, extracted text length: ${data.text.length}`,
   );
