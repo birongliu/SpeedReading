@@ -46,8 +46,13 @@ A progressive web application that trains users to read faster while maintaining
 ### Installation
 
 ```bash
-git clone https://github.com/your-org/speedreading-app.git
-cd speedreading-app
+git clone https://github.com/birongliu/speedreading.git
+cd speedreading
+
+cd into frontend
+npm install
+
+cd into backend
 npm install
 ```
 
@@ -60,13 +65,14 @@ Create a `.env.local` in the frontend root and a `.env` in the backend root:
 DATABASE_URL=your_supabase_postgres_url
 
 # Backend
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-OPENAI_API_KEY=your_openai_key
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
 
 # Frontend
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 NEXT_PUBLIC_API_URL=http://localhost:4000
+GROQ_API_KEY=
 ```
 
 ### Run Locally
@@ -84,8 +90,7 @@ npm run dev        # starts Next.js on port 3000
 ### Database Setup
 
 ```bash
-cd backend
-npx prisma migrate dev
+create database on [supabase](https://supabase.com/dashboard) 
 ```
 
 ---
