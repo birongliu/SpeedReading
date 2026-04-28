@@ -2,8 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const dotenv = require('dotenv');
-const pdfParse = require('pdf-parse');
-const { extractText: extractTextWithUnpdf, getDocumentProxy } = require('unpdf');
+const { PDFParse } = require('pdf-parse');
 dotenv.config();
 
 const app = express();
@@ -26,7 +25,7 @@ function chunkText(text, wordsPerChunk = 200) {
 
   const words = normalized.trim().split(/\s+/).filter(Boolean);
   const chunks = [];
-  console.log(`Total words extracted: ${words.length}`, words);
+  console.log(`Total words extracted: ${words.length}`);
   for (let i = 0; i < words.length; i += wordsPerChunk) {
     chunks.push(words.slice(i, i + wordsPerChunk).join(' '));
   }
@@ -45,31 +44,21 @@ function isPdfBytes(inputBuffer) {
   if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
     return false;
   }
-
-  const pdfSignature = inputBuffer.subarray(0, 5).toString("utf8");
-  return pdfSignature === "%PDF-";
+  const pdfSignature = inputBuffer.subarray(0, 5).toString('utf8');
+  return pdfSignature === '%PDF-';
 }
 
-
 async function extractPdfText(pdfBuffer) {
-  try {
-    const data = await pdfParse(pdfBuffer);
-    console.log(
-      `Pages: ${data.numpages}, extracted text length: ${data.text.length}`,
-    );
-    return data.text || '';
-  } catch (error) {
-    console.warn(
-      'pdf-parse failed, trying unpdf fallback:',
-      error instanceof Error ? error.message : error,
-    );
+  const parser = new PDFParse({ data: pdfBuffer });
 
-    const pdf = await getDocumentProxy(new Uint8Array(pdfBuffer));
-    const result = await extractTextWithUnpdf(pdf, { mergePages: true });
+  try {
+    const result = await parser.getText({ pageJoiner: '\n\n' });
     console.log(
-      `unpdf pages: ${result.totalPages}, extracted text length: ${result.text.length}`,
+      `Pages: ${result.total}, extracted text length: ${result.text.length}`,
     );
     return result.text || '';
+  } finally {
+    await parser.destroy();
   }
 }
 async function requireSupabaseAuth(req, res, next) {
@@ -119,6 +108,12 @@ app.get('/', (req, res) => {
   });
 });
 
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+  });
+});
+
 app.post(
   '/extract-text',
   express.raw({ type: '*/*', limit: '20mb' }),
@@ -143,39 +138,44 @@ app.post(
     next();
   },
   requireSupabaseAuth,
-  express.raw({ type: "*/*", limit: "20mb" }),
   async (req, res) => {
     const contentType = (
-      req.headers["content-type"] || "application/octet-stream"
+      req.headers['content-type'] || 'application/octet-stream'
     ).toLowerCase();
     const wordsPerChunk = getWordsPerChunk(req.query.wordsPerChunk);
 
-    if (!contentType.startsWith("application/pdf")) {
+    if (!contentType.startsWith('application/pdf')) {
       return res.status(415).json({
         error:
-          "Only PDF blobs are supported. Use Content-Type: application/pdf.",
+          'Only PDF blobs are supported. Use Content-Type: application/pdf.',
       });
     }
 
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
       return res
         .status(400)
-        .json({ error: "Input must be a non-empty PDF blob" });
+        .json({ error: 'Input must be a non-empty PDF blob' });
     }
 
+    if (!isPdfBytes(req.body)) {
+      return res
+        .status(400)
+        .json({ error: 'Buffer does not appear to be a valid PDF' });
+    }
 
-    let text = "";
+    let text = '';
 
     try {
       text = await extractPdfText(req.body);
-    } catch {
-      return res.status(400).json({ error: "Failed to parse PDF blob" });
+    } catch (err) {
+      console.error('PDF parse error:', err);
+      return res.status(400).json({ error: 'Failed to parse PDF blob' });
     }
 
     if (!text) {
       return res
         .status(400)
-        .json({ error: "Could not extract text from PDF blob" });
+        .json({ error: 'Could not extract text from PDF blob' });
     }
 
     const chunks = chunkText(text, wordsPerChunk);
@@ -191,31 +191,5 @@ app.post(
 );
 
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server listening on http://localhost:${PORT}`);
 });
-
-async function processPdfBytes(buffer, filename, format = "text") {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "speedreading-pdf-"));
-
-  try {
-    const safeFilename = `${crypto.randomUUID()}-${
-      path.basename(`${filename}.txt`) || "document.pdf"
-    }`;
-
-    const filepath = path.join(tmpDir, safeFilename);
-    await fs.writeFile(filepath, Buffer.from(buffer));
-
-    const x = await convert([filepath], {
-      outputDir: tmpDir,
-      format: format,
-    });
-
-    console.log(`Extracted text for ${filename}:`, x);
-    return x;
-  } catch (error) {
-    console.error("Error processing PDF:", error);
-    throw error;
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(console.error);
-  }
-}

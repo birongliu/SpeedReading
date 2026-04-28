@@ -22,28 +22,24 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [targetWpm, setTargetWpm] = useState(profile?.default_wpm || 250);
   const [wpm, setWpm] = useState(profile?.default_wpm || 250);
   const [words, setWords] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [durationSeconds, setDurationSeconds] = useState(0);
   const [quizQuestions, setQuizQuestions] = useState<Question[]>([]);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const sessionEndedRef = useRef(false);
-  const sessionLoadStartedRef = useRef(false);
-  const activeStartedAtRef = useRef<number | null>(null);
-  const elapsedBeforePauseMsRef = useRef(0);
 
-  const wordsRead = words.length ? currentWordIndex + 1 : 0;
-  const durationSeconds = Math.floor(elapsedMs / 1000);
-  const achievedWpm = useMemo(() => {
-    if (elapsedMs <= 0 || !wordsRead) return null;
-    return Math.round(wordsRead / (elapsedMs / 60000));
-  }, [elapsedMs, wordsRead]);
-  const isComplete = words.length > 0 && currentWordIndex === words.length - 1;
   const isDotMode = profile?.focus_mode === 'dot';
+  const currentWord = words[currentWordIndex] ?? '';
+  const wordsRead = words.length ? currentWordIndex + 1 : 0;
+  const achievedWpm = useMemo(() => {
+    if (!durationSeconds || !wordsRead) return null;
+    return Math.round(wordsRead / (durationSeconds / 60));
+  }, [durationSeconds, wordsRead]);
+  const isComplete = words.length > 0 && currentWordIndex === words.length - 1;
 
   const formattedDuration = useMemo(() => {
     const minutes = Math.floor(durationSeconds / 60);
@@ -51,35 +47,16 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
   }, [durationSeconds]);
 
-  const getCurrentElapsedMs = useCallback(() => {
-    if (activeStartedAtRef.current === null) {
-      return elapsedBeforePauseMsRef.current || elapsedMs;
-    }
-
-    return (
-      elapsedBeforePauseMsRef.current +
-      performance.now() -
-      activeStartedAtRef.current
-    );
-  }, [elapsedMs]);
-
   const finishReadingSession = useCallback(
     async (completed: boolean) => {
       if (!session?.access_token || !words.length || sessionEndedRef.current) {
         return;
       }
 
-      const currentElapsedMs = getCurrentElapsedMs();
-      const currentWordsRead = completed ? words.length : wordsRead;
-      const currentAchievedWpm =
-        currentElapsedMs > 0
-          ? Math.round(currentWordsRead / (currentElapsedMs / 60000))
-          : achievedWpm;
-
       const payload = {
-        words_read: currentWordsRead,
-        achieved_wpm: currentAchievedWpm,
-        duration_seconds: Math.floor(currentElapsedMs / 1000),
+        words_read: completed ? words.length : wordsRead,
+        achieved_wpm: achievedWpm,
+        duration_seconds: durationSeconds,
         completed,
       };
 
@@ -101,7 +78,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     },
     [
       achievedWpm,
-      getCurrentElapsedMs,
+      durationSeconds,
       session?.access_token,
       sessionId,
       words.length,
@@ -137,12 +114,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       return;
     }
 
-    if (sessionLoadStartedRef.current) {
-      return;
-    }
-
-    sessionLoadStartedRef.current = true;
-
     const fetchSessionData = async () => {
       try {
         const response = await fetch(`/api/sessions/${sessionId}`, {
@@ -164,12 +135,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
         const data = await response.json();
         console.log('Session Data:', data);
-        const nextTargetWpm =
-          typeof data.session.target_wpm === 'number'
-            ? data.session.target_wpm
-            : profile?.default_wpm || 250;
-        setTargetWpm(nextTargetWpm);
-        setWpm(nextTargetWpm);
+        setIsLoading(false);
         return { sessionId: data.session.id, fileid: data.session.file_id };
       } catch (err) {
         console.error('Error:', err);
@@ -194,10 +160,20 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         });
 
         if (!response.ok) {
-          const errorBody = await response.text().catch(() => '');
-          throw new Error(
-            errorBody || 'AI service is temporarily unavailable. Please try again later.',
-          );
+          const errorBody = (await response.json().catch(() => null)) as {
+            error?: unknown;
+          } | null;
+          const message =
+            typeof errorBody?.error === 'string'
+              ? errorBody.error
+              : 'AI service is temporarily unavailable. Please try again later.';
+
+          setError(message);
+          showToast({
+            message,
+            variant: 'error',
+          });
+          return;
         }
 
         const reader = response.body?.getReader();
@@ -224,38 +200,23 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         for (const line of lines) {
           const data = line.replace('data:', '').trim();
           if (data === '[DONE]') break;
-          let parsed: {
-            data?: {
-              text?: string;
-              questions?: Question[];
-            };
-            error?: string;
-          };
-
           try {
-            parsed = JSON.parse(data);
+            const parsed = JSON.parse(data);
+            if (parsed.data?.text) {
+              allWords = [...allWords, ...parsed.data.text.split(/\s+/)];
+            }
+            if (Array.isArray(parsed.data?.questions)) {
+              allQuestions.push(...parsed.data.questions);
+            }
           } catch {
             // skip malformed lines
-            continue;
-          }
-
-          if (parsed.error) {
-            throw new Error(parsed.error);
-          }
-
-          if (parsed.data?.text) {
-            allWords = [...allWords, ...parsed.data.text.split(/\s+/)];
-          }
-          if (Array.isArray(parsed.data?.questions)) {
-            allQuestions.push(...parsed.data.questions);
           }
         }
 
         if (!allWords.length) {
-          throw new Error('AI did not return readable text for this file.');
+          throw new Error('No readable text was returned for this document.');
         }
 
-        setError(null);
         setWords(allWords);
         setQuizQuestions(allQuestions);
       } catch (err) {
@@ -274,11 +235,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         console.log('Session fetched successfully:', sessionData);
         await analyzeFileContent(sessionData.fileid);
       }
-      setIsLoading(false);
     };
 
     resolver();
-  }, [profile?.default_wpm, sessionId, status, session?.access_token, router]);
+  }, [sessionId, status, session?.access_token, router]);
 
   const submitComprehensionCheck = async (answers: (number | null)[]) => {
     if (!session?.access_token) {
@@ -371,34 +331,14 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   }, [currentWordIndex, isPaused, wpm, words.length]);
 
   useEffect(() => {
-    if (!words.length) return;
-
-    if (isPaused) {
-      if (activeStartedAtRef.current !== null) {
-        elapsedBeforePauseMsRef.current +=
-          performance.now() - activeStartedAtRef.current;
-        activeStartedAtRef.current = null;
-        setElapsedMs(elapsedBeforePauseMsRef.current);
-      }
-      return;
-    }
-
-    if (activeStartedAtRef.current === null) {
-      activeStartedAtRef.current = performance.now();
-    }
+    if (isPaused || !words.length || isComplete) return;
 
     const timer = window.setInterval(() => {
-      if (activeStartedAtRef.current === null) return;
-
-      setElapsedMs(
-        elapsedBeforePauseMsRef.current +
-          performance.now() -
-          activeStartedAtRef.current,
-      );
-    }, 250);
+      setDurationSeconds((current) => current + 1);
+    }, 1000);
 
     return () => window.clearInterval(timer);
-  }, [isPaused, words.length]);
+  }, [isComplete, isPaused, words.length]);
 
   useEffect(() => {
     if (!isComplete || !isPaused || sessionEndedRef.current) return;
@@ -421,15 +361,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         return;
       }
 
-      const currentElapsedMs = getCurrentElapsedMs();
-      const currentWordsRead = isComplete ? words.length : wordsRead;
       const payload = JSON.stringify({
-        words_read: currentWordsRead,
-        achieved_wpm:
-          currentElapsedMs > 0
-            ? Math.round(currentWordsRead / (currentElapsedMs / 60000))
-            : achievedWpm,
-        duration_seconds: Math.floor(currentElapsedMs / 1000),
+        words_read: isComplete ? words.length : wordsRead,
+        achieved_wpm: achievedWpm,
+        duration_seconds: durationSeconds,
         completed: isComplete,
       });
 
@@ -451,7 +386,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
   }, [
     achievedWpm,
-    getCurrentElapsedMs,
+    durationSeconds,
     isComplete,
     session?.access_token,
     sessionId,
@@ -528,9 +463,13 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       {/* Main Reading Area */}
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
         {showQuiz ? (
-          <div className="rounded-3xl border border-white/8 bg-[rgba(13,13,18,0.9)] px-6 py-6 text-white shadow-2xl shadow-black/30 sm:px-8">
+          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[rgba(13,13,18,0.9)] px-6 py-6 shadow-2xl shadow-black/30 sm:px-8">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-amber-500/15 blur-3xl"
+            />
             {quizScore === null ? (
-              <>
+              <div className="relative">
                 <QuizScreen
                   chunkTitle="Reading session"
                   wpm={achievedWpm ?? wpm}
@@ -538,13 +477,13 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                   onSubmit={submitComprehensionCheck}
                 />
                 {quizSubmitting ? (
-                  <p className="mt-3 text-sm text-gray-500">
+                  <p className="mt-3 text-sm text-zinc-400">
                     Saving comprehension check...
                   </p>
                 ) : null}
-              </>
+              </div>
             ) : (
-              <div className="text-center">
+              <div className="relative text-center">
                 <h2 className="text-2xl font-bold text-white">
                   Comprehension saved
                 </h2>
@@ -554,7 +493,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                 <button
                   type="button"
                   onClick={handleExitSession}
-                  className="mt-6 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-5 py-2 text-sm font-semibold text-white transition-all hover:from-amber-400 hover:to-orange-500"
+                  className="mt-6 rounded-lg bg-linear-to-r from-amber-500 to-orange-600 px-5 py-2 text-sm font-semibold text-white transition-all hover:from-amber-400 hover:to-orange-500"
                 >
                   Back to Dashboard
                 </button>
@@ -575,9 +514,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
             <p className="text-xs text-zinc-500 uppercase tracking-wider">
               Target WPM
             </p>
-            <p className="mt-2 text-xl font-bold text-amber-300">
-              {targetWpm} WPM
-            </p>
+            <p className="mt-2 text-xl font-bold text-amber-300">{wpm} WPM</p>
           </div>
           <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
             <p className="text-xs text-zinc-500 uppercase tracking-wider">
@@ -616,10 +553,13 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
             <>
               <div className="relative mb-12 min-h-32">
                 {isDotMode ? (
-                  <div className="flex min-h-32 items-center justify-center text-center">
-                    <span className="text-5xl font-bold text-amber-300 sm:text-7xl">
-                      {words[currentWordIndex]}
-                    </span>
+                  <div className="flex min-h-44 items-center justify-center">
+                    <div className="flex max-w-full flex-col items-center gap-5 px-6 text-center">
+                      <span className="h-2.5 w-2.5 rounded-full bg-amber-400 shadow-lg shadow-amber-500/40" />
+                      <span className="block max-w-full break-words text-5xl font-bold leading-tight text-white sm:text-7xl">
+                        {currentWord}
+                      </span>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2 text-center text-3xl font-bold leading-relaxed sm:text-4xl">
