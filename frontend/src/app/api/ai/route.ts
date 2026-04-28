@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export const runtime = 'nodejs';
 
-const client = new Groq({ apiKey: process.env.GROQ_KEY });
+const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:4000';
 
 const SYSTEM_PROMPT = `
