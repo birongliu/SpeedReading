@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.104.0",
+    "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.1.2",
     "module": "^2.0.0",
@@ -20,6 +21,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.8.1",
+    "tailwind-merge": "^3.5.0",
     "unpdf": "^1.6.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.12"
