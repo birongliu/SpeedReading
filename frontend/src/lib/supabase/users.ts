@@ -38,7 +38,7 @@ export async function upsertUserProfile(
       default_wpm: 250,
       display_name: displayName,
       email: user.email,
-      focus_mode: FocusMode.HIGHLIGHT,
+      focus_mode: FocusMode.DOT,
       id: user.id,
       last_login_at: new Date().toISOString(),
       role: "user",

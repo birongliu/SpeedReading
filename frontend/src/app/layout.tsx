@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SpeedReadinger",
+  title: "SpeedRead",
   description: "SpeedReading is a tool that helps you read faster and think sharper.",
 };
 

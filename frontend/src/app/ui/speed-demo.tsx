@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 const DEMO_WORDS = (
   'The key to reading faster is training your brain to recognize words ' +
-  'instantly without subvocalizing every single one. SpeedRead guides you ' +
+  'instantly without processing every single one. SpeedRead guides you ' +
   'through focused sessions that rewire how you process text at speed. ' +
   'You will be amazed at how quickly your comprehension catches up.'
 ).split(' ')
@@ -57,7 +57,8 @@ export default function SpeedDemo() {
   const word = DEMO_WORDS[index]
 
   // Split word into: before ORP, ORP char, after ORP
-  const orp = Math.floor(word.replace(/[^a-zA-Z]/g, '').length * 0.35)
+  const letters = word.replace(/[^a-zA-Z]/g, '')
+  const orp = Math.floor(word.length / 2)
   const before = word.slice(0, orp)
   const highlight = word[orp] ?? ''
   const after = word.slice(orp + 1)

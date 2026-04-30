@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
 interface UploadStore {
   pendingFile: Uint8Array<ArrayBuffer> | null;
@@ -11,9 +10,7 @@ interface UploadStore {
   clearPendingFile: () => void;
 }
 
-export const useUploadStore = create<UploadStore>()(
-  persist(
-    (set) => ({
+export const useUploadStore = create<UploadStore>()((set) => ({
       pendingFile: null,
       pendingFileName: null,
       setPendingFile: (
@@ -21,9 +18,4 @@ export const useUploadStore = create<UploadStore>()(
         fileName: string | null,
       ) => set({ pendingFile: file, pendingFileName: fileName }),
       clearPendingFile: () => set({ pendingFile: null, pendingFileName: null }),
-    }),
-    {
-      name: "upload-store",
-    },
-  ),
-);
+    }));
