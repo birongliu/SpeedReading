@@ -195,6 +195,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
             const parsed = JSON.parse(data);
             if (parsed.data?.text) {
               allWords = [...allWords, ...parsed.data.text.split(/\s+/)];
+              setWords([...allWords]);
             }
             if (Array.isArray(parsed.data?.questions)) {
               allQuestions.push(...parsed.data.questions);
