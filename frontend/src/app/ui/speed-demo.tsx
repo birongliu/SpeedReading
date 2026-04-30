@@ -109,7 +109,7 @@ export default function SpeedDemo() {
             <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-px bg-amber-500/15 pointer-events-none" />
 
             {/* Word box */}
-            <div className="relative w-44 h-16 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.07] overflow-hidden">
+            <div className="relative w-auto px-6 h-16 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.07]">
               {/* Subtle inner glow */}
               <div className="absolute inset-0 bg-gradient-to-b from-amber-500/[0.04] to-transparent pointer-events-none" />
               <span
