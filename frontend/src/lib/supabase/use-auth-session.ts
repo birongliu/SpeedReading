@@ -16,6 +16,7 @@ export function useAuthSession() {
       updateFocusMode: state.updateFocusMode,
       updateDefaultWpm: state.updateDefaultWpm,
       updateDisplayName: state.updateDisplayName,
+      updateHideQuestionnaire: state.updateHideQuestionnaire,
       user: state.user,
     })),
   );

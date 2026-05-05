@@ -16,12 +16,15 @@ export type UserProfile = {
   email: string | null;
   focus_mode: FocusMode | null;
   id: string;
+  hide_questionaire: boolean | null;
 };
 
 export async function getUserProfile(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, email, display_name, default_wpm, focus_mode")
+    .select(
+      "id, email, display_name, default_wpm, focus_mode, hide_questionaire",
+    )
     .eq("id", userId)
     .maybeSingle();
 
@@ -83,6 +86,19 @@ export async function updateUserLastLogin(
     .from("users")
     .update({ last_login_at: new Date().toISOString() })
     .eq("id", user.id);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function updateHideQuestionnaire(
+  supabase: SupabaseClient,
+  userId: string,
+  hideQuestionnaire: boolean,
+) {
+  const { error } = await supabase
+    .from("users")
+    .update({ hide_questionaire: hideQuestionnaire })
+    .eq("id", userId);
 
   if (error) throw new Error(error.message);
 }

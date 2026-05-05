@@ -5,6 +5,7 @@ type ProfilePatchBody = {
   displayName?: unknown;
   wpm?: unknown;
   focusMode?: unknown;
+  hideQuestionnaire?: unknown;
 };
 
 export const runtime = "edge";
@@ -40,6 +41,13 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid focus mode' }, { status: 400 });
     }
     updates.focus_mode = body.focusMode;
+  }
+
+  if (body.hideQuestionnaire !== undefined) {
+    if (typeof body.hideQuestionnaire !== 'boolean') {
+      return NextResponse.json({ error: 'Invalid hide questionnaire value' }, { status: 400 });
+    }
+    updates.hide_questionaire = body.hideQuestionnaire;
   }
 
   if (Object.keys(updates).length === 0) {

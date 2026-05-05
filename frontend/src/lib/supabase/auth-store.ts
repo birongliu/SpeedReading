@@ -19,6 +19,7 @@ type AuthState = {
   updateDefaultWpm: (wpm: number) => Promise<void>;
   updateFocusMode: (mode: FocusMode) => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<void>;
+  updateHideQuestionnaire: (hideQuestionnaire: boolean) => Promise<void>;
 };
 
 let initialized = false;
@@ -175,6 +176,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             display_name: displayName,
             email: user.email ?? null,
             focus_mode: FocusMode.DOT,
+            hide_questionaire: null,
+            id: user.id,
+          },
+      profileError: '',
+    });
+  },
+  updateHideQuestionnaire: async (hideQuestionnaire) => {
+    const { profile, session, user } = get();
+
+    if (!user || !session) {
+      throw new Error('You need to be logged in to update your profile.');
+    }
+
+    const res = await fetch('/api/profile', {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ hideQuestionnaire }),
+    });
+
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string };
+      throw new Error(data.error ?? 'Failed to update questionnaire setting.');
+    }
+
+    set({
+      profile: profile
+        ? { ...profile, hide_questionaire: hideQuestionnaire }
+        : {
+            default_wpm: 250,
+            display_name: null,
+            email: user.email ?? null,
+            focus_mode: FocusMode.DOT,
+            hide_questionaire: hideQuestionnaire,
             id: user.id,
           },
       profileError: '',

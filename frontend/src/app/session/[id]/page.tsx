@@ -637,7 +637,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                           id="wpm"
                           type="range"
                           min="100"
-                          max="500"
+                          max="1000"
                           value={wpm}
                           onChange={(e) => setWpm(Number(e.target.value))}
                           className="w-20 cursor-pointer"
