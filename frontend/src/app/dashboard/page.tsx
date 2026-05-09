@@ -329,6 +329,8 @@ export default function DashboardPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [wpmModalOpen, setWpmModalOpen] = useState(false);
   const [wpmInput, setWpmInput] = useState('');
+  const [colorModalOpen, setColorModalOpen] = useState(false);
+  const [highlightColorInput, setHighlightColorInput] = useState(profile?.highlight_color ?? 'amber');
 
   const displayName = profile?.display_name?.trim() ?? '';
   const profileEmail = profile?.email ?? user?.email ?? '';
@@ -1096,6 +1098,25 @@ export default function DashboardPage() {
                   </p>
                   <p className="text-xs font-semibold text-amber-300">saved</p>
                 </div>
+                <div className="rounded-xl border border-white/6 bg-black/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-zinc-500">Highlight color</p>
+                    <button
+                      type="button"
+                      onClick={() => setColorModalOpen(true)}
+                      className="flex h-6 w-6 items-center justify-center rounded-full border border-white/10 text-zinc-400 transition-all hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-200"
+                      aria-label="Edit highlight color"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6">
+                        <path d="M7.8 2.6 11.4 6.2M2.5 11.5l1-3.7 5.8-5.8a1.3 1.3 0 0 1 1.8 0l.9.9a1.3 1.3 0 0 1 0 1.8l-5.8 5.8-3.7 1Z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="mt-2 text-2xl font-bold text-white capitalize">
+                    {profile?.highlight_color ?? 'Amber'}
+                  </p>
+                  <p className="text-xs font-semibold text-amber-300">saved</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1641,6 +1662,72 @@ export default function DashboardPage() {
                 maxSize={50}
                 disabled={isUploading}
               />
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {colorModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" />
+          <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-white/8 bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
+            <div className="relative rounded-[15px] bg-[rgba(9,9,11,0.9)] px-6 py-6">
+              <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">Appearance</p>
+                  <h2 className="mt-2 text-xl font-bold text-white">Highlight color</h2>
+                </div>
+                <button type="button" onClick={() => setColorModalOpen(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-zinc-400 transition-all hover:border-white/20 hover:bg-white/6 hover:text-white">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.8">
+                    <path d="M4.5 4.5l9 9M13.5 4.5l-9 9" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex flex-col gap-3">
+                {[
+                  { value: 'red', label: 'Red', letter: 'text-red-400', bg: 'bg-red-500/15 border-red-400/50' },
+                  { value: 'amber', label: 'Amber', letter: 'text-amber-400', bg: 'bg-amber-500/15 border-amber-400/50' },
+                  { value: 'orange', label: 'Orange', letter: 'text-orange-400', bg: 'bg-orange-500/15 border-orange-400/50' },
+                  { value: 'blue', label: 'Blue', letter: 'text-blue-400', bg: 'bg-blue-500/15 border-blue-400/50' },
+                  { value: 'green', label: 'Green', letter: 'text-green-400', bg: 'bg-green-500/15 border-green-400/50' },
+                ].map(({ value, label, letter, bg }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setHighlightColorInput(value)}
+                    className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                      highlightColorInput === value
+                        ? bg
+                        : 'border-white/10 bg-white/3 text-zinc-300 hover:border-white/20'
+                    }`}
+                  >
+                    <span className={`font-mono text-lg font-bold ${letter}`}>A</span>
+                    <span className="text-white">{label}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    setProfileSaving(true);
+                    const supabase = createSupabaseBrowserClient();
+                    const { data: { user: currentUser } } = await supabase.auth.getUser();
+                    if (!currentUser) throw new Error('Not logged in');
+                    const { error } = await (supabase.from('users') as any).update({ highlight_color: highlightColorInput }).eq('id', currentUser.id);
+                    if (error) throw new Error(error.message);
+                    showToast({ message: `Highlight color set to ${highlightColorInput}.`, title: 'Saved', variant: 'success' });
+                    setColorModalOpen(false);
+                  } catch (err) {
+                    showToast({ message: err instanceof Error ? err.message : 'Failed to save', variant: 'error' });
+                  } finally {
+                    setProfileSaving(false);
+                  }
+                }}
+                disabled={profileSaving}
+                className="mt-4 h-12 w-full rounded-xl bg-linear-to-r from-amber-500 to-orange-600 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all hover:from-amber-400 hover:to-orange-500 disabled:opacity-70"
+              >
+                {profileSaving ? 'Saving...' : 'Save color'}
+              </button>
             </div>
           </div>
         </div>
