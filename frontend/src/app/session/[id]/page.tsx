@@ -415,7 +415,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         className="pointer-events-none fixed inset-0 -z-10"
       >
         <div className="absolute right-[8%] top-[8%] h-130 w-130 rounded-full bg-amber-500/15 blur-3xl" />
-        <div className="absolute bottom-[8%] left-[4%] h-[420px] w-[420px] rounded-full bg-orange-600/6 blur-[110px]" />
+        <div className="absolute bottom-[8%] left-[4%] h-105 w-105 rounded-full bg-orange-600/6 blur-[110px]" />
       </div>
 
       {/* Header */}
@@ -559,7 +559,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                     ) : (
                       // Dot mode (default) — RSVP single word box
                       <div className="relative flex items-center justify-center min-h-32">
-                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.07]">
+                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/3 border border-white/[0.07]">
                           {(() => {
                             const word = words[currentWordIndex] ?? "";
                             const orp = Math.floor(word.length / 2);

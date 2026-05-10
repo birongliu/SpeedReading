@@ -175,9 +175,9 @@ export default function Home() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 -z-10"
           >
-            <div className="absolute top-[15%] right-[10%] w-[700px] h-[700px] rounded-full bg-amber-600/[0.07] blur-[140px] animate-float" />
-            <div className="absolute bottom-[10%] left-[5%]  w-[500px] h-[500px] rounded-full bg-orange-600/[0.06] blur-[110px] animate-float-b" />
-            <div className="absolute top-[50%] left-[40%]  w-[300px] h-[300px] rounded-full bg-rose-600/[0.04] blur-[90px]" />
+            <div className="absolute top-[15%] right-[10%] w-175 h-175 rounded-full bg-amber-600/[0.07] blur-[140px] animate-float" />
+            <div className="absolute bottom-[10%] left-[5%]  w-125 h-125 rounded-full bg-orange-600/6 blur-[110px] animate-float-b" />
+            <div className="absolute top-[50%] left-[40%]  w-75 h-75 rounded-full bg-rose-600/4 blur-[90px]" />
           </div>
 
           {/* Dot-grid overlay */}
@@ -204,7 +204,7 @@ export default function Home() {
               <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.04]">
                 <span className="text-white">Read faster.</span>
                 <br />
-                <span className="bg-gradient-to-r from-amber-400 via-orange-300 to-rose-400 bg-clip-text text-transparent animate-gradient-pan">
+                <span className="bg-linear-to-r from-amber-400 via-orange-300 to-rose-400 bg-clip-text text-transparent animate-gradient-pan">
                   Think sharper.
                 </span>
               </h1>
@@ -215,16 +215,16 @@ export default function Home() {
 
               {/* CTAs */}
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/login" className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:from-amber-400 hover:to-orange-500 hover:-translate-y-0.5 transition-all duration-200 shadow-2xl shadow-amber-900/40 hover:shadow-amber-900/60 text-center">
+                <Link href="/login" className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 text-white font-semibold text-sm hover:from-amber-400 hover:to-orange-500 hover:-translate-y-0.5 transition-all duration-200 shadow-2xl shadow-amber-900/40 hover:shadow-amber-900/60 text-center">
                   Start reading — it&apos;s free
                 </Link>
-                <button className="w-full sm:w-auto px-7 py-3.5 rounded-xl border border-white/[0.1] text-zinc-300 font-semibold text-sm hover:bg-white/[0.04] hover:text-white hover:border-white/20 transition-all duration-200">
+                <button className="w-full sm:w-auto px-7 py-3.5 rounded-xl border border-white/10 text-zinc-300 font-semibold text-sm hover:bg-white/4 hover:text-white hover:border-white/20 transition-all duration-200">
                   Try a sample →
                 </button>
               </div>
 
               {/* Stats row */}
-              <div className="flex gap-8 pt-6 border-t border-white/[0.06] mt-1">
+              <div className="flex gap-8 pt-6 border-t border-white/6 mt-1">
                 {[
                   { stat: '3×', label: 'faster reading' },
                   { stat: '94%', label: 'comprehension kept' },
@@ -248,7 +248,7 @@ export default function Home() {
         </section>
 
         {/* Gradient divider */}
-        <div className="h-px bg-gradient-to-r from-transparent via-amber-500/25 to-transparent" />
+        <div className="h-px bg-linear-to-r from-transparent via-amber-500/25 to-transparent" />
 
         {/* ── Features ─────────────────────────────────────── */}
         <section id="features" className="py-28 px-4 sm:px-6">
@@ -267,10 +267,10 @@ export default function Home() {
               {FEATURES.map(({ icon, title, desc }) => (
                 <div
                   key={title}
-                  className="group relative rounded-2xl p-px transition-all duration-300 bg-gradient-to-br from-white/[0.07] to-white/[0.02] hover:from-amber-500/25 hover:to-orange-500/10"
+                  className="group relative rounded-2xl p-px transition-all duration-300 bg-linear-to-br from-white/[0.07] to-white/2 hover:from-amber-500/25 hover:to-orange-500/10"
                 >
                   <div className="rounded-[15px] bg-[rgba(13,13,18,0.95)] p-6 h-full flex flex-col gap-4">
-                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-500/15 to-orange-500/15 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:border-amber-500/40 group-hover:from-amber-500/25 group-hover:to-orange-500/25 transition-all duration-300">
+                    <div className="w-11 h-11 rounded-xl bg-linear-to-br from-amber-500/15 to-orange-500/15 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:border-amber-500/40 group-hover:from-amber-500/25 group-hover:to-orange-500/25 transition-all duration-300">
                       {icon}
                     </div>
                     <h3 className="font-semibold text-white text-[15px]">
@@ -287,7 +287,7 @@ export default function Home() {
         </section>
 
         {/* Gradient divider */}
-        <div className="h-px bg-gradient-to-r from-transparent via-white/[0.04] to-transparent" />
+        <div className="h-px bg-linear-to-r from-transparent via-white/4 to-transparent" />
 
         {/* ── How it works ─────────────────────────────────── */}
         <section
@@ -296,7 +296,7 @@ export default function Home() {
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-amber-950/[0.08] via-transparent to-transparent"
+            className="pointer-events-none absolute inset-0 -z-10 bg-linear-to-b from-amber-950/8 via-transparent to-transparent"
           />
 
           <div className="max-w-2xl mx-auto">
@@ -316,7 +316,7 @@ export default function Home() {
               {/* Connector line */}
               <div
                 aria-hidden="true"
-                className="absolute left-[23px] top-[56px] w-px bg-gradient-to-b from-amber-500/60 via-amber-500/15 to-transparent"
+                className="absolute left-5.75 top-14x bg-gbg-linear-to-bm-amber-500/60 via-amber-500/15 to-transparent"
                 style={{ height: 'calc(100% - 80px)' }}
               />
 
@@ -329,7 +329,7 @@ export default function Home() {
                     }`}
                   >
                     {/* Step badge */}
-                    <div className="relative z-10 w-12 h-12 rounded-xl shrink-0 flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600 border border-amber-500/30 shadow-xl shadow-amber-900/40">
+                    <div className="relative z-10 w-12 h-12 rounded-xl shrink-0 flex items-center justify-center bg-linear-to-br from-amber-500 to-orange-600 border border-amber-500/30 shadow-xl shadow-amber-900/40">
                       <span className="text-xs font-black text-white/90 font-mono">
                         {n}
                       </span>
@@ -366,10 +366,10 @@ export default function Home() {
               {AUDIENCE.map(({ badge, role, desc }) => (
                 <div
                   key={role}
-                  className="relative rounded-2xl p-px bg-gradient-to-br from-white/[0.07] to-white/[0.02]"
+                  className="relative rounded-2xl p-px bg-linear-to-br from-white/[0.07] to-white/2"
                 >
                   <div className="rounded-[15px] bg-[rgba(13,13,18,0.95)] px-6 py-7 h-full flex flex-col gap-4">
-                    <span className="w-fit text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/[0.12] border border-amber-500/20 text-amber-400 uppercase tracking-wide">
+                    <span className="w-fit text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-500/12 border border-amber-500/20 text-amber-400 uppercase tracking-wide">
                       {badge}
                     </span>
                     <h3 className="font-semibold text-white text-[15px]">
@@ -391,7 +391,7 @@ export default function Home() {
             {/* Background */}
             <div
               aria-hidden="true"
-              className="absolute inset-0 bg-gradient-to-br from-amber-900/70 via-orange-900/50 to-[#09090b]"
+              className="absolute inset-0 bg-linear-to-br from-amber-900/70 via-orange-900/50 to-[#09090b]"
             />
             {/* Dot grid */}
             <div
@@ -415,13 +415,13 @@ export default function Home() {
             {/* Top border shimmer */}
             <div
               aria-hidden="true"
-              className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-amber-400/50 to-transparent"
+              className="absolute top-0 inset-x-0 h-px bg-linear-to-r from-transparent via-amber-400/50 to-transparent"
             />
 
             <div className="relative px-8 sm:px-16 py-20 flex flex-col items-center text-center gap-6">
               <h2 className="text-4xl sm:text-5xl font-extrabold text-white leading-tight max-w-lg">
                 Start reading faster{' '}
-                <span className="bg-gradient-to-r from-amber-300 to-orange-300 bg-clip-text text-transparent">
+                <span className="bg-linear-to-r from-amber-300 to-orange-300 bg-clip-text text-transparent">
                   today
                 </span>
               </h2>
@@ -433,7 +433,7 @@ export default function Home() {
                 <button className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-white text-zinc-900 font-semibold text-sm hover:bg-zinc-100 hover:-translate-y-0.5 transition-all shadow-2xl shadow-black/40">
                   Create free account
                 </button>
-                <button className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-white/20 text-white font-semibold text-sm hover:bg-white/[0.06] hover:border-white/30 transition-all">
+                <button className="w-full sm:w-auto px-8 py-3.5 rounded-xl border border-white/20 text-white font-semibold text-sm hover:bg-white/6 hover:border-white/30 transition-all">
                   Try a sample first
                 </button>
               </div>
@@ -443,10 +443,10 @@ export default function Home() {
       </main>
 
       {/* ── Footer ───────────────────────────────────────────── */}
-      <footer className="px-4 sm:px-6 py-8 border-t border-white/[0.05]">
+      <footer className="px-4 sm:px-6 py-8 border-t border-white/5">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-md bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shrink-0">
+            <div className="w-5 h-5 rounded-md bg-linear-to-br from-amber-500 to-orange-600 flex items-center justify-center shrink-0">
               <svg width="10" height="10" viewBox="0 0 13 13" fill="none">
                 <path
                   d="M1.5 6.5h3.5m3 0h3M1.5 3.5h2m6 0h-3M1.5 9.5h5m3 0h-2"
