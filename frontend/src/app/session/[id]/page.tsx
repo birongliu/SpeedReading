@@ -7,12 +7,22 @@ import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
 import { useUploadStore } from "@/lib/store/upload-store";
 import { QuizScreen } from "@/app/ui/QuizScreen";
+import { rgbToHex } from "@/lib/color-utils";
 import type { Question } from "@/lib/types";
 
 type SessionPageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+// Helper function to convert RGB string format to hex for styling
+const getRgbAsHex = (rgbString?: string | null): string => {
+  if (!rgbString) return "#FBBF24"; // Default amber
+  const match = rgbString.match(/\d+/g);
+  if (!match || match.length < 3) return "#FBBF24";
+  const [r, g, b] = match.slice(0, 3).map(Number);
+  return rgbToHex(r, g, b);
 };
 
 export default function ReadingSessionPage({ params }: SessionPageProps) {
@@ -546,11 +556,17 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             key={index}
                             className={`transition-all duration-200 ${
                               index === currentWordIndex
-                                ? "text-amber-400 scale-110"
+                                ? "scale-110"
                                 : index < currentWordIndex
                                   ? "text-zinc-500"
                                   : "text-white/60"
                             }`}
+                            style={{
+                              color:
+                                index === currentWordIndex
+                                  ? getRgbAsHex(profile?.highlight_color)
+                                  : undefined,
+                            }}
                           >
                             {word}
                           </span>
@@ -569,7 +585,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             return (
                               <span className="flex items-baseline font-mono text-4xl font-bold tracking-wide">
                                 <span className="text-zinc-300">{before}</span>
-                                <span className="text-amber-400">
+                                <span style={{ color: getRgbAsHex(profile?.highlight_color) }}>
                                   {highlight}
                                 </span>
                                 <span className="text-zinc-300">{after}</span>
