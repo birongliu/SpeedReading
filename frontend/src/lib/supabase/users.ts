@@ -15,13 +15,14 @@ export type UserProfile = {
   display_name: string | null;
   email: string | null;
   focus_mode: FocusMode | null;
+  highlight_color: string | null;
   id: string;
 };
 
 export async function getUserProfile(supabase: SupabaseClient, userId: string) {
   const { data, error } = await supabase
     .from("users")
-    .select("id, email, display_name, default_wpm, focus_mode")
+    .select("id, email, display_name, default_wpm, focus_mode, highlight_color")
     .eq("id", userId)
     .maybeSingle();
 
