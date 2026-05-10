@@ -627,25 +627,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                           Next →
                         </button>
                       </div>
-
-                      {/* WPM Adjustment */}
-                      <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-                        <label htmlFor="wpm" className="text-sm text-zinc-400">
-                          Speed:
-                        </label>
-                        <input
-                          id="wpm"
-                          type="range"
-                          min="100"
-                          max="500"
-                          value={wpm}
-                          onChange={(e) => setWpm(Number(e.target.value))}
-                          className="w-20 cursor-pointer"
-                        />
-                        <span className="min-w-12 text-right text-sm font-semibold text-amber-300">
-                          {wpm}
-                        </span>
-                      </div>
                     </div>
                   </div>
                 </>

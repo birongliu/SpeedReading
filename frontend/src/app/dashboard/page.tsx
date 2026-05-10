@@ -297,6 +297,7 @@ export default function DashboardPage() {
     updateFocusMode,
     user,
   } = useAuthSession();
+  const [uploadWpm, setUploadWpm] = useState(250);
   const [authError, setAuthError] = useState('');
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState('');
@@ -1654,6 +1655,39 @@ export default function DashboardPage() {
                     <path d="M4.5 4.5l9 9M13.5 4.5l-9 9" />
                   </svg>
                 </button>
+              </div>
+
+              <div className="mb-6 rounded-xl border border-white/6 bg-white/3 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <label htmlFor="upload-wpm" className="text-sm font-semibold text-white">
+                    Reading speed
+                  </label>
+                  <span className="text-sm font-bold text-amber-300">{uploadWpm} WPM</span>
+                </div>
+                <input
+                  id="upload-wpm"
+                  type="range"
+                  min={100}
+                  max={1000}
+                  value={uploadWpm}
+                  onChange={(e) => setUploadWpm(Number(e.target.value))}
+                  disabled={isUploading}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                />
+                <div className="mt-3 flex justify-between">
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-xs font-medium ${uploadWpm <= 200 ? 'text-amber-300' : 'text-zinc-600'}`}>Slow</span>
+                    <span className="text-[10px] text-zinc-600">100-200</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-xs font-medium ${uploadWpm > 200 && uploadWpm <= 500 ? 'text-amber-300' : 'text-zinc-600'}`}>Normal</span>
+                    <span className="text-[10px] text-zinc-600">200-500</span>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <span className={`text-xs font-medium ${uploadWpm > 500 ? 'text-amber-300' : 'text-zinc-600'}`}>Fast</span>
+                    <span className="text-[10px] text-zinc-600">500+</span>
+                  </div>
+                </div>
               </div>
 
               <UploadFile
