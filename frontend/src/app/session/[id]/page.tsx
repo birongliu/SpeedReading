@@ -75,7 +75,17 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
   const finishReadingSession = useCallback(
     async (completed: boolean) => {
-      if (!session?.access_token || !words.length || sessionEndedRef.current) {
+      if (!words.length || sessionEndedRef.current) {
+        return;
+      }
+
+      // Skip API call for sample readings
+      if (sessionId.startsWith("sample-")) {
+        sessionEndedRef.current = true;
+        return;
+      }
+
+      if (!session?.access_token) {
         return;
       }
 
@@ -129,16 +139,32 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   }, [finishReadingSession, isComplete, router]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace("/login");
-      return;
-    }
+    // Sample readings don't require authentication
+    const isSampleSession = sessionId.startsWith("sample-");
 
-    if (status !== "authenticated" || !session?.access_token) {
-      return;
+    if (!isSampleSession) {
+      // Only require authentication for non-sample sessions
+      if (status === "unauthenticated") {
+        router.replace("/login");
+        return;
+      }
+
+      if (status !== "authenticated" || !session?.access_token) {
+        return;
+      }
     }
 
     const fetchSessionData = async () => {
+      if (!session?.access_token) {
+        setError("Authentication required for this session");
+        showToast({
+          message: "Authentication required",
+          variant: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch(`/api/sessions/${sessionId}`, {
           headers: {
@@ -172,6 +198,16 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
 
     const analyzeFileContent = async (fileId: string) => {
+      if (!session?.access_token) {
+        setError("Authentication required for this session");
+        showToast({
+          message: "Authentication required",
+          variant: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch("/api/ai", {
           method: "POST",
@@ -246,7 +282,38 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
 
     const resolver = async () => {
-      // Check if session data is available from the store
+      // Check if this is a sample reading first
+      if (sessionId.startsWith("sample-")) {
+        // For sample sessions, always use the session store
+        const storedSessionData = useSessionStore.getState().sessionData;
+
+        if (storedSessionData && storedSessionData.sessionId === sessionId) {
+          console.log(
+            "Using stored session data for sample:",
+            storedSessionData,
+          );
+
+          if (storedSessionData.targetWpm) {
+            setWpm(storedSessionData.targetWpm);
+          }
+
+          setWords(storedSessionData.words || []);
+          setQuizQuestions(storedSessionData.quizQuestions || []);
+          setIsLoading(false);
+          useSessionStore.getState().clearSessionData();
+        } else {
+          // Sample session data not found in store - shouldn't happen
+          setError("Sample reading data not found. Please try again.");
+          showToast({
+            message: "Sample reading data not found",
+            variant: "error",
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // For regular sessions, check stored data first
       const storedSessionData = useSessionStore.getState().sessionData;
 
       if (storedSessionData && storedSessionData.sessionId === sessionId) {
@@ -364,7 +431,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
   useEffect(() => {
     if (profile?.focus_mode !== "highlight") return;
-    currentWordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    currentWordRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
   }, [currentWordIndex, profile?.focus_mode]);
 
   useEffect(() => {
@@ -608,7 +678,9 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                         {words.map((word, index) => (
                           <span
                             key={index}
-                            ref={index === currentWordIndex ? currentWordRef : null}
+                            ref={
+                              index === currentWordIndex ? currentWordRef : null
+                            }
                             className={`transition-all duration-200 ${
                               index === currentWordIndex
                                 ? "scale-110"
@@ -640,7 +712,13 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             return (
                               <span className="flex items-baseline font-mono text-4xl font-bold tracking-wide">
                                 <span className="text-zinc-300">{before}</span>
-                                <span style={{ color: getRgbAsHex(profile?.highlight_color) }}>
+                                <span
+                                  style={{
+                                    color: getRgbAsHex(
+                                      profile?.highlight_color,
+                                    ),
+                                  }}
+                                >
                                   {highlight}
                                 </span>
                                 <span className="text-zinc-300">{after}</span>

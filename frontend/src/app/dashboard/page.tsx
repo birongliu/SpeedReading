@@ -10,6 +10,7 @@ import { useSessionStore } from "@/lib/store/session-store";
 import { FocusMode, isAnonymousUser } from "@/lib/supabase/users";
 import { UploadFile } from "@/app/ui/upload-file";
 import ConvertAnonModal from "@/app/ui/convert-anon-modal";
+import SampleReadingsModal from "@/app/ui/sample-readings-modal";
 import { hexToRgb, rgbToHex, rgbToColorName } from "@/lib/color-utils";
 import ProgressAnalytics, {
   type ProgressAnalyticsData,
@@ -371,6 +372,7 @@ export default function DashboardPage() {
   const [highlightColorInput, setHighlightColorInput] = useState(
     getColorHex(profile?.highlight_color),
   );
+  const [sampleReadingsModalOpen, setSampleReadingsModalOpen] = useState(false);
 
   const displayName = profile?.display_name?.trim() ?? "";
   const profileEmail = profile?.email ?? user?.email ?? "";
@@ -555,11 +557,7 @@ export default function DashboardPage() {
         setUploadModalOpen(true);
         break;
       case "Try sample":
-        showToast({
-          message: "Sample reading session coming soon!",
-          title: "Try Sample",
-          variant: "info",
-        });
+        setSampleReadingsModalOpen(true);
         break;
       case "Review progress":
         setProgressModalOpen(true);
@@ -1910,6 +1908,12 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : null}
+
+      <SampleReadingsModal
+        isOpen={sampleReadingsModalOpen}
+        onClose={() => setSampleReadingsModalOpen(false)}
+        defaultWpm={defaultWpm}
+      />
 
       <ConvertAnonModal
         isOpen={convertModalOpen}
