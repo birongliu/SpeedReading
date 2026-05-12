@@ -17,11 +17,27 @@ type SessionPageProps = {
   }>;
 };
 
-// Helper function to convert RGB string format to hex for styling
+const DEFAULT_HIGHLIGHT_COLOR = "#FBBF24";
+const LEGACY_HIGHLIGHT_COLOR_MAP: Record<string, string> = {
+  amber: "#FBBF24",
+};
+
+// Helper function to convert saved color formats to hex for styling
 const getRgbAsHex = (rgbString?: string | null): string => {
-  if (!rgbString) return "#FBBF24"; // Default amber
-  const match = rgbString.match(/\d+/g);
-  if (!match || match.length < 3) return "#FBBF24";
+  if (!rgbString) return DEFAULT_HIGHLIGHT_COLOR;
+
+  const normalizedColor = rgbString.trim();
+
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedColor)) {
+    return normalizedColor.toUpperCase();
+  }
+
+  const legacyHex = LEGACY_HIGHLIGHT_COLOR_MAP[normalizedColor.toLowerCase()];
+  if (legacyHex) return legacyHex;
+
+  const match = normalizedColor.match(/\d+/g);
+  if (!match || match.length < 3) return DEFAULT_HIGHLIGHT_COLOR;
+
   const [r, g, b] = match.slice(0, 3).map(Number);
   return rgbToHex(r, g, b);
 };
