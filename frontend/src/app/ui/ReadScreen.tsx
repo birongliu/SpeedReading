@@ -28,7 +28,9 @@ export function ReadScreen({
   const wpmRef = useRef(wpm);
   const wordIdxRef = useRef(0);
 
-  wpmRef.current = wpm;
+  useEffect(() => {
+    wpmRef.current = wpm;
+  }, [wpm]);
 
   const stop = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);

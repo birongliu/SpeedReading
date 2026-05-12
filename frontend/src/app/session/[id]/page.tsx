@@ -15,6 +15,40 @@ type SessionPageProps = {
   }>;
 };
 
+function calculateLiveActualWpm({
+  wordsRead,
+  elapsedMs,
+  targetWpm,
+}: {
+  wordsRead: number;
+  elapsedMs: number;
+  targetWpm: number;
+}) {
+  if (wordsRead <= 0 || elapsedMs <= 0) return 0;
+  if (elapsedMs < 3000) return targetWpm;
+
+  const elapsedMinutes = elapsedMs / 60000;
+  const rawWpm = wordsRead / elapsedMinutes;
+
+  return Math.round(rawWpm);
+}
+
+function calculateFinalWpm(wordsRead: number, elapsedMs: number) {
+  if (wordsRead <= 0 || elapsedMs <= 0) return 0;
+
+  const elapsedMinutes = elapsedMs / 60000;
+  const rawWpm = wordsRead / elapsedMinutes;
+
+  return Math.ceil(rawWpm - 0.5);
+}
+
+function formatElapsedTime(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export default function ReadingSessionPage({ params }: SessionPageProps) {
   const router = useRouter();
   const { id: sessionId } = use(params);
@@ -25,37 +59,135 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const [wpm, setWpm] = useState(profile?.default_wpm || 250);
   const [words, setWords] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [quizQuestions, setQuizQuestions] = useState<Question[]>([]);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const sessionEndedRef = useRef(false);
   const currentWordRef = useRef<HTMLSpanElement | null>(null);
+  const highlightScrollRef = useRef<HTMLDivElement | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const accumulatedMsRef = useRef(0);
+  const playbackFrameRef = useRef<number | null>(null);
+  const lastElapsedUpdateRef = useRef(0);
+  const playbackStartedAtRef = useRef<number | null>(null);
+  const playbackAnchorIndexRef = useRef(0);
+  const currentWordIndexRef = useRef(0);
 
-  const wordsRead = words.length ? currentWordIndex + 1 : 0;
-  const achievedWpm = useMemo(() => {
-    if (!durationSeconds || !wordsRead) return null;
-    return Math.round(wordsRead / (durationSeconds / 60));
-  }, [durationSeconds, wordsRead]);
+  const targetWpm = wpm;
+  const wordDelayMs = 60000 / targetWpm;
+  const wordsRead = words.length
+    ? Math.min(currentWordIndex + 1, words.length)
+    : 0;
+  const actualWpm = useMemo(
+    () =>
+      calculateLiveActualWpm({
+        wordsRead,
+        elapsedMs,
+        targetWpm,
+      }),
+    [elapsedMs, targetWpm, wordsRead],
+  );
   const isComplete = words.length > 0 && currentWordIndex === words.length - 1;
 
-  const formattedDuration = useMemo(() => {
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = durationSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
-  }, [durationSeconds]);
+  const formattedDuration = useMemo(
+    () => formatElapsedTime(elapsedMs),
+    [elapsedMs],
+  );
+
+  const getActiveElapsedMs = useCallback(() => {
+    if (startedAtRef.current === null) {
+      return accumulatedMsRef.current;
+    }
+
+    return accumulatedMsRef.current + performance.now() - startedAtRef.current;
+  }, []);
+
+  useEffect(() => {
+    currentWordIndexRef.current = currentWordIndex;
+  }, [currentWordIndex]);
+
+  const pauseReading = useCallback(() => {
+    if (isPaused) return;
+
+    const activeElapsedMs = getActiveElapsedMs();
+    accumulatedMsRef.current = activeElapsedMs;
+    startedAtRef.current = null;
+    playbackStartedAtRef.current = null;
+    playbackAnchorIndexRef.current = currentWordIndex;
+    setElapsedMs(activeElapsedMs);
+    setIsPaused(true);
+  }, [currentWordIndex, getActiveElapsedMs, isPaused]);
+
+  const resumeReading = useCallback(() => {
+    if (!isPaused || isComplete) return;
+
+    const now = performance.now();
+    startedAtRef.current = now;
+    playbackStartedAtRef.current = now;
+    playbackAnchorIndexRef.current = currentWordIndex;
+    setIsPaused(false);
+  }, [currentWordIndex, isComplete, isPaused]);
+
+  const togglePaused = useCallback(() => {
+    if (isPaused) {
+      resumeReading();
+    } else {
+      pauseReading();
+    }
+  }, [isPaused, pauseReading, resumeReading]);
+
+  const seekToWordIndex = useCallback(
+    (nextIndex: number) => {
+      if (!words.length) return;
+
+      const clampedIndex = Math.min(Math.max(nextIndex, 0), words.length - 1);
+      const activeElapsedMs = getActiveElapsedMs();
+      const now = performance.now();
+
+      playbackAnchorIndexRef.current = clampedIndex;
+      playbackStartedAtRef.current = isPaused ? null : now;
+      lastElapsedUpdateRef.current = activeElapsedMs;
+      currentWordIndexRef.current = clampedIndex;
+      setCurrentWordIndex(clampedIndex);
+      setElapsedMs(activeElapsedMs);
+    },
+    [getActiveElapsedMs, isPaused, words.length],
+  );
+
+  const handleWpmChange = useCallback(
+    (nextWpm: number) => {
+      if (!isPaused && words.length && !isComplete) {
+        const now = performance.now();
+        const activeElapsedMs = getActiveElapsedMs();
+
+        accumulatedMsRef.current = activeElapsedMs;
+        startedAtRef.current = now;
+        playbackStartedAtRef.current = now;
+        playbackAnchorIndexRef.current = currentWordIndexRef.current;
+        lastElapsedUpdateRef.current = activeElapsedMs;
+        setElapsedMs(activeElapsedMs);
+      }
+
+      setWpm(nextWpm);
+    },
+    [getActiveElapsedMs, isComplete, isPaused, words.length],
+  );
 
   const finishReadingSession = useCallback(
-    async (completed: boolean) => {
+    async (completed: boolean, finalElapsedMs = getActiveElapsedMs()) => {
       if (!session?.access_token || !words.length || sessionEndedRef.current) {
         return;
       }
 
+      const finalWordsRead = completed ? words.length : wordsRead;
+      const finalWpm = calculateFinalWpm(finalWordsRead, finalElapsedMs);
+
       const payload = {
-        words_read: completed ? words.length : wordsRead,
-        achieved_wpm: achievedWpm,
-        duration_seconds: durationSeconds,
+        words_read: finalWordsRead,
+        achieved_wpm: finalWpm,
+        duration_seconds: Math.round(finalElapsedMs / 1000),
         completed,
       };
 
@@ -76,8 +208,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       sessionEndedRef.current = true;
     },
     [
-      achievedWpm,
-      durationSeconds,
+      getActiveElapsedMs,
       session?.access_token,
       sessionId,
       words.length,
@@ -306,33 +437,89 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
   useEffect(() => {
     if (profile?.focus_mode !== "highlight") return;
-    currentWordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const container = highlightScrollRef.current;
+    const currentWord = currentWordRef.current;
+
+    if (!container || !currentWord) return;
+
+    const nextScrollTop =
+      currentWord.offsetTop -
+      container.clientHeight / 2 +
+      currentWord.clientHeight / 2;
+
+    container.scrollTo({
+      behavior: "smooth",
+      top: Math.max(0, nextScrollTop),
+    });
   }, [currentWordIndex, profile?.focus_mode]);
 
   useEffect(() => {
-    if (isPaused || !words.length) return;
+    if (playbackFrameRef.current !== null) {
+      cancelAnimationFrame(playbackFrameRef.current);
+      playbackFrameRef.current = null;
+    }
 
-    const msPerWord = 60000 / wpm;
-    const timer = setTimeout(() => {
-      if (currentWordIndex < words.length - 1) {
-        setCurrentWordIndex(currentWordIndex + 1);
-      } else {
-        setIsPaused(true);
+    if (isPaused || !words.length || sessionEndedRef.current) return;
+
+    const startedAt = performance.now();
+
+    if (startedAtRef.current === null) {
+      startedAtRef.current = startedAt;
+    }
+
+    if (playbackStartedAtRef.current === null) {
+      playbackStartedAtRef.current = startedAt;
+      playbackAnchorIndexRef.current = currentWordIndexRef.current;
+    }
+
+    const updatePlayback = () => {
+      const now = performance.now();
+      const activeElapsedMs = getActiveElapsedMs();
+      const playbackElapsedMs =
+        now - (playbackStartedAtRef.current ?? now);
+      const expectedIndex =
+        playbackAnchorIndexRef.current +
+        Math.floor(playbackElapsedMs / wordDelayMs);
+      const nextIndex = Math.min(expectedIndex, words.length - 1);
+
+      setCurrentWordIndex((current) => {
+        if (current === nextIndex) return current;
+
+        currentWordIndexRef.current = nextIndex;
+        return nextIndex;
+      });
+
+      if (
+        activeElapsedMs - lastElapsedUpdateRef.current >= 250 ||
+        expectedIndex >= words.length
+      ) {
+        lastElapsedUpdateRef.current = activeElapsedMs;
+        setElapsedMs(activeElapsedMs);
       }
-    }, msPerWord);
 
-    return () => clearTimeout(timer);
-  }, [currentWordIndex, isPaused, wpm, words.length]);
+      if (expectedIndex >= words.length) {
+        accumulatedMsRef.current = activeElapsedMs;
+        startedAtRef.current = null;
+        playbackStartedAtRef.current = null;
+        playbackAnchorIndexRef.current = words.length - 1;
+        setElapsedMs(activeElapsedMs);
+        setIsPaused(true);
+        playbackFrameRef.current = null;
+        return;
+      }
 
-  useEffect(() => {
-    if (isPaused || !words.length || isComplete) return;
+      playbackFrameRef.current = requestAnimationFrame(updatePlayback);
+    };
 
-    const timer = window.setInterval(() => {
-      setDurationSeconds((current) => current + 1);
-    }, 1000);
+    playbackFrameRef.current = requestAnimationFrame(updatePlayback);
 
-    return () => window.clearInterval(timer);
-  }, [isComplete, isPaused, words.length]);
+    return () => {
+      if (playbackFrameRef.current !== null) {
+        cancelAnimationFrame(playbackFrameRef.current);
+        playbackFrameRef.current = null;
+      }
+    };
+  }, [getActiveElapsedMs, isPaused, wordDelayMs, words.length]);
 
   useEffect(() => {
     if (!isComplete || !isPaused || sessionEndedRef.current) return;
@@ -355,10 +542,12 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         return;
       }
 
+      const finalElapsedMs = getActiveElapsedMs();
+      const finalWordsRead = isComplete ? words.length : wordsRead;
       const payload = JSON.stringify({
-        words_read: isComplete ? words.length : wordsRead,
-        achieved_wpm: achievedWpm,
-        duration_seconds: durationSeconds,
+        words_read: finalWordsRead,
+        achieved_wpm: calculateFinalWpm(finalWordsRead, finalElapsedMs),
+        duration_seconds: Math.round(finalElapsedMs / 1000),
         completed: isComplete,
       });
 
@@ -379,8 +568,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [
-    achievedWpm,
-    durationSeconds,
+    getActiveElapsedMs,
     isComplete,
     session?.access_token,
     sessionId,
@@ -462,7 +650,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
               <>
                 <QuizScreen
                   chunkTitle="Reading session"
-                  wpm={achievedWpm ?? wpm}
+                  wpm={actualWpm || targetWpm}
                   questions={quizQuestions}
                   onSubmit={submitComprehensionCheck}
                 />
@@ -505,7 +693,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                   Target WPM
                 </p>
                 <p className="mt-2 text-xl font-bold text-amber-300">
-                  {wpm} WPM
+                  {targetWpm} WPM
                 </p>
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
@@ -518,10 +706,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider">
-                  Actual Pace
+                  Actual WPM
                 </p>
                 <p className="mt-2 text-xl font-bold text-white">
-                  {achievedWpm ? `${achievedWpm} WPM` : "Calculating"}
+                  {actualWpm ? `${actualWpm} WPM` : "Calculating"}
                 </p>
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
@@ -546,22 +734,31 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                   <div className="relative mb-12 min-h-32">
                     {profile?.focus_mode === "highlight" ? (
                       // Highlight mode — full passage
-                      <div className="flex flex-wrap gap-2 text-center text-3xl font-bold leading-relaxed sm:text-4xl">
-                        {words.map((word, index) => (
-                          <span
-                            key={index}
-                            ref={index === currentWordIndex ? currentWordRef : null}
-                            className={`transition-all duration-200 ${
-                              index === currentWordIndex
-                                ? "text-amber-400 scale-110"
-                                : index < currentWordIndex
-                                  ? "text-zinc-500"
-                                  : "text-white/60"
-                            }`}
-                          >
-                            {word}
-                          </span>
-                        ))}
+                      <div
+                        ref={highlightScrollRef}
+                        className="max-h-[42vh] min-h-64 overflow-y-auto rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-5 sm:max-h-[46vh] sm:px-6"
+                      >
+                        <div className="text-left text-2xl font-bold leading-loose sm:text-3xl">
+                          {words.map((word, index) => (
+                            <span
+                              key={index}
+                              ref={
+                                index === currentWordIndex
+                                  ? currentWordRef
+                                  : null
+                              }
+                              className={`mr-2 inline-block transition-all duration-200 ${
+                                index === currentWordIndex
+                                  ? "scale-110 text-amber-400"
+                                  : index < currentWordIndex
+                                    ? "text-zinc-500"
+                                    : "text-white/60"
+                              }`}
+                            >
+                              {word}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       // Dot mode (default) — RSVP single word box
@@ -608,16 +805,14 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setIsPaused(!isPaused)}
+                          onClick={togglePaused}
                           className="flex-1 rounded-lg bg-linear-to-r from-amber-500 to-orange-600 px-4 py-2 font-semibold text-white transition-all hover:from-amber-400 hover:to-orange-500 sm:flex-none sm:px-6"
                         >
                           {isPaused ? "Resume" : "Pause"}
                         </button>
                         <button
                           onClick={() =>
-                            setCurrentWordIndex(
-                              Math.max(0, currentWordIndex - 1),
-                            )
+                            seekToWordIndex(currentWordIndex - 1)
                           }
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
@@ -625,9 +820,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                         </button>
                         <button
                           onClick={() =>
-                            setCurrentWordIndex(
-                              Math.min(words.length - 1, currentWordIndex + 1),
-                            )
+                            seekToWordIndex(currentWordIndex + 1)
                           }
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
@@ -646,7 +839,9 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                           min="100"
                           max="500"
                           value={wpm}
-                          onChange={(e) => setWpm(Number(e.target.value))}
+                          onChange={(e) =>
+                            handleWpmChange(Number(e.target.value))
+                          }
                           className="w-20 cursor-pointer"
                         />
                         <span className="min-w-12 text-right text-sm font-semibold text-amber-300">

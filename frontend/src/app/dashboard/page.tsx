@@ -77,6 +77,44 @@ type DocumentRow = {
   original_filename: string | null;
 };
 
+type MutationError = {
+  message: string;
+};
+
+type ReadingSessionInsert = {
+  user_id: string;
+  document_id: string;
+  target_wpm: number;
+  words_read: number;
+  duration_seconds: number;
+  completed: boolean;
+  start_page: number;
+  end_page: number;
+};
+
+type DashboardMutationClient = {
+  from(table: 'reading_sessions'): {
+    insert(values: ReadingSessionInsert): {
+      select(columns: 'id'): {
+        single(): Promise<{
+          data: { id: string } | null;
+          error: MutationError | null;
+        }>;
+      };
+    };
+  };
+  from(table: 'users'): {
+    update(values: { highlight_color: string }): {
+      eq(
+        column: 'id',
+        value: string,
+      ): Promise<{
+        error: MutationError | null;
+      }>;
+    };
+  };
+};
+
 const EMPTY_DASHBOARD_STATS: DashboardStat[] = [
   { label: 'Total sessions', value: '0', detail: '0 this week' },
   { label: 'Weekly reading', value: '0 words', detail: 'this week' },
@@ -567,7 +605,8 @@ export default function DashboardPage() {
         throw new Error('You need to be logged in to read documents.');
       }
 
-      const supabase = createSupabaseBrowserClient();
+      const supabase =
+        createSupabaseBrowserClient() as unknown as DashboardMutationClient;
       const { data: newSession, error } = await supabase
         .from('reading_sessions')
         .insert({
@@ -1711,9 +1750,14 @@ export default function DashboardPage() {
                   try {
                     setProfileSaving(true);
                     const supabase = createSupabaseBrowserClient();
+                    const mutationSupabase =
+                      supabase as unknown as DashboardMutationClient;
                     const { data: { user: currentUser } } = await supabase.auth.getUser();
                     if (!currentUser) throw new Error('Not logged in');
-                    const { error } = await (supabase.from('users') as any).update({ highlight_color: highlightColorInput }).eq('id', currentUser.id);
+                    const { error } = await mutationSupabase
+                      .from('users')
+                      .update({ highlight_color: highlightColorInput })
+                      .eq('id', currentUser.id);
                     if (error) throw new Error(error.message);
                     showToast({ message: `Highlight color set to ${highlightColorInput}.`, title: 'Saved', variant: 'success' });
                     setColorModalOpen(false);
