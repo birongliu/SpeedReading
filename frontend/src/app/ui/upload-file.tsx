@@ -56,8 +56,8 @@ export function UploadFile({
       try {
         await onUpload(file);
         showToast({
-          message: `${file.name} uploaded successfully.`,
-          title: "Upload complete",
+          message: `${file.name} is ready for a reading session.`,
+          title: "File ready",
           variant: "success",
         });
       } catch (error) {

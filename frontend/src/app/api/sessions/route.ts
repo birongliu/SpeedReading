@@ -16,6 +16,9 @@ export async function POST(req: NextRequest) {
   const file = formData.get('file') as File | null;
   const documentName = formData.get('documentName') as string | null;
   const pagesLength = Number(formData.get('pagesLength') ?? 1);
+  const targetWpmValue = formData.get('targetWpm');
+  const requestedTargetWpm =
+    targetWpmValue === null ? null : Number(targetWpmValue);
 
   if (!file) {
     return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -68,6 +71,10 @@ export async function POST(req: NextRequest) {
 
   if (!profileError && typeof profileData?.default_wpm === 'number') {
     targetWpm = profileData.default_wpm;
+  }
+
+  if (requestedTargetWpm !== null && Number.isFinite(requestedTargetWpm)) {
+    targetWpm = Math.min(1000, Math.max(100, Math.round(requestedTargetWpm)));
   }
 
   try {

@@ -9,13 +9,23 @@ import { useUploadStore } from "@/lib/store/upload-store";
 // import pdfjsLib from "pdfjs-dist";
 import mupdf from "mupdf"
 
+const SESSION_WPM_PRESETS = [150, 250, 350, 500];
+
+const clampSessionWpm = (value: number) =>
+  Math.min(1000, Math.max(100, Math.round(value)));
+
 export default function SessionPage() {
   const router = useRouter();
   const { status, profile, session } = useAuthSession();
   const [isStarting, setIsStarting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [hasFile, setHasFile] = useState(false);
+  const [pacePromptOpen, setPacePromptOpen] = useState(false);
+  const [paceCustomizerOpen, setPaceCustomizerOpen] = useState(false);
+  const [paceTouched, setPaceTouched] = useState(false);
+  const [sessionWpm, setSessionWpm] = useState(250);
   const { pendingFile, pendingFileName } = useUploadStore();
+  const globalWpm = profile?.default_wpm ?? 250;
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -43,9 +53,22 @@ export default function SessionPage() {
     setIsLoading(false);
   }, [router, status, pendingFile, pendingFileName]);
 
-  const handleStartReading = async () => {
+  useEffect(() => {
+    if (!paceTouched) {
+      setSessionWpm(globalWpm);
+    }
+  }, [globalWpm, paceTouched]);
+
+  const handleSessionWpmChange = (nextWpm: number) => {
+    setPaceTouched(true);
+    setSessionWpm(clampSessionWpm(nextWpm));
+  };
+
+  const handleStartReading = async (targetWpm = globalWpm) => {
     try {
       setIsStarting(true);
+      setPacePromptOpen(false);
+      setPaceCustomizerOpen(false);
 
       // Get the auth token from session
       console.log("Starting session with auth status:", status, "hasSession:", Boolean(session));
@@ -55,6 +78,7 @@ export default function SessionPage() {
           message: "Authentication required",
           variant: "error",
         });
+        setIsStarting(false);
         return;
       }
       function parsePageNumbers(content: Uint8Array<ArrayBufferLike>) {
@@ -72,18 +96,22 @@ export default function SessionPage() {
         return;
       }
       const page = await parsePageNumbers(pendingFile)
+      const file = new File([pendingFile], pendingFileName, {
+        type: "application/pdf",
+      });
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("documentName", pendingFileName);
+      formData.append("pagesLength", String(page));
+      formData.append("targetWpm", String(clampSessionWpm(targetWpm)));
+
       // Call the sessions API to create a new session
       const response = await fetch("/api/sessions", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          documentName: pendingFileName,
-          file: pendingFile,
-          pagesLength: page, // Placeholder value, replace with actual page count if available
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -183,9 +211,9 @@ export default function SessionPage() {
 
             <div className="mt-8 grid gap-3 sm:gap-4 lg:grid-cols-3">
               <div className="rounded-2xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-6">
-                <p className="text-sm text-zinc-500">Target WPM</p>
+                <p className="text-sm text-zinc-500">Global WPM</p>
                 <p className="mt-2 text-2xl font-bold text-amber-300">
-                  {profile?.default_wpm || 250} WPM
+                  {globalWpm} WPM
                 </p>
               </div>
               <div className="rounded-2xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-6">
@@ -208,7 +236,7 @@ export default function SessionPage() {
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:gap-4">
               <button
                 type="button"
-                onClick={handleStartReading}
+                onClick={() => setPacePromptOpen(true)}
                 disabled={isStarting}
                 className="rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 py-3 font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -223,6 +251,94 @@ export default function SessionPage() {
             </div>
           </div>
         </section>
+
+        {paceCustomizerOpen ? (
+          <section className="rounded-2xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-6 sm:p-8">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-xl">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                  This session only
+                </p>
+                <h2 className="mt-2 text-xl font-bold text-white">
+                  Adjust reading speed
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">
+                  This WPM applies only to the session you are about to start.
+                  Your global WPM will stay at {globalWpm}.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-5 py-4 text-center">
+                <p className="text-xs font-semibold uppercase tracking-widest text-amber-300">
+                  Session WPM
+                </p>
+                <p className="mt-1 text-3xl font-extrabold text-white">
+                  {sessionWpm}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-7">
+              <input
+                type="range"
+                min={100}
+                max={1000}
+                step={10}
+                value={sessionWpm}
+                onChange={(event) =>
+                  handleSessionWpmChange(Number(event.target.value))
+                }
+                disabled={isStarting}
+                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                aria-label="Session words per minute"
+              />
+              <div className="mt-2 flex justify-between text-[11px] text-zinc-600">
+                <span>100</span>
+                <span>550</span>
+                <span>1000</span>
+              </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {SESSION_WPM_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => handleSessionWpmChange(preset)}
+                  disabled={isStarting}
+                  className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                    sessionWpm === preset
+                      ? "border-amber-400/50 bg-amber-500/15 text-amber-100"
+                      : "border-white/10 bg-white/3 text-zinc-300 hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100"
+                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                >
+                  {preset} WPM
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => handleStartReading(sessionWpm)}
+                disabled={isStarting}
+                className="rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 py-3 font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isStarting ? "Starting..." : `Start at ${sessionWpm} WPM`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPaceCustomizerOpen(false);
+                  setPacePromptOpen(true);
+                }}
+                disabled={isStarting}
+                className="rounded-xl border border-white/10 px-6 py-3 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Back
+              </button>
+            </div>
+          </section>
+        ) : null}
 
         <section className="rounded-2xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-6 sm:p-8">
           <h2 className="text-lg font-bold text-white sm:text-xl">
@@ -258,6 +374,70 @@ export default function SessionPage() {
           </div>
         </section>
       </main>
+
+      {pacePromptOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="session-wpm-title"
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/8 bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-24 left-1/2 h-52 w-52 -translate-x-1/2 rounded-full bg-amber-500/20 blur-3xl"
+            />
+            <div className="relative rounded-[15px] bg-[rgba(9,9,11,0.9)] px-6 py-6">
+              <div className="mb-6">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                  Session pace
+                </p>
+                <h2
+                  id="session-wpm-title"
+                  className="mt-2 text-xl font-bold text-white"
+                >
+                  Change WPM for this session?
+                </h2>
+                <p className="mt-3 text-sm leading-6 text-zinc-400">
+                  Your global WPM is {globalWpm}. You can use it now, or pick a
+                  temporary speed for this reading session only.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleStartReading(globalWpm)}
+                  disabled={isStarting}
+                  className="h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isStarting ? "Starting..." : `Use global WPM (${globalWpm})`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPacePromptOpen(false);
+                    setPaceCustomizerOpen(true);
+                  }}
+                  disabled={isStarting}
+                  className="h-12 rounded-xl border border-white/10 px-6 text-sm font-semibold text-zinc-300 transition-all hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Adjust for this session
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPacePromptOpen(false)}
+                  disabled={isStarting}
+                  className="h-10 rounded-xl text-sm font-semibold text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -12,12 +12,18 @@ import ConvertAnonModal from '@/app/ui/convert-anon-modal';
 import ProgressAnalytics, {
   type ProgressAnalyticsData,
 } from '@/app/ui/ProgressAnalytics';
+import { useUploadStore } from '@/lib/store/upload-store';
 
 const QUICK_ACTIONS = [
   { title: 'Upload PDF', desc: 'Start a reading session from a document.' },
   { title: 'Try sample', desc: 'Practice with curated reading material.' },
   { title: 'Review progress', desc: 'See trends once real sessions exist.' },
 ];
+
+const SESSION_WPM_PRESETS = [150, 250, 350, 500];
+
+const clampSessionWpm = (value: number) =>
+  Math.min(1000, Math.max(100, Math.round(value)));
 
 type ReadingSessionAnalyticsRow = {
   id: string;
@@ -323,6 +329,7 @@ const formatRecentPace = (session: RecentSessionRow) => {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const setPendingFile = useUploadStore((state) => state.setPendingFile);
   const {
     error: authSessionError,
     isAuthenticated,
@@ -362,6 +369,14 @@ export default function DashboardPage() {
   const [startingDocumentId, setStartingDocumentId] = useState<string | null>(
     null,
   );
+  const [readPaceDocumentId, setReadPaceDocumentId] = useState<string | null>(
+    null,
+  );
+  const [readPaceDialogMode, setReadPaceDialogMode] = useState<
+    'prompt' | 'customize' | null
+  >(null);
+  const [readPaceTouched, setReadPaceTouched] = useState(false);
+  const [readSessionWpm, setReadSessionWpm] = useState(250);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -374,6 +389,15 @@ export default function DashboardPage() {
   const profileEmail = profile?.email ?? user?.email ?? '';
   const defaultWpm = profile?.default_wpm ?? 250;
   const focusMode = formatFocusMode(profile?.focus_mode);
+  const selectedReadDocument = recentDocuments.find(
+    (document) => document.documentId === readPaceDocumentId,
+  );
+
+  useEffect(() => {
+    if (!readPaceTouched) {
+      setReadSessionWpm(defaultWpm);
+    }
+  }, [defaultWpm, readPaceTouched]);
 
   const loadRecentDocuments = useCallback(async () => {
     setRecentDocumentsLoading(true);
@@ -570,35 +594,38 @@ export default function DashboardPage() {
   const handleFileUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file, file.name);
-      formData.append('documentName', file.name);
-      formData.append('pagesLength', '1'); // or compute real page count
-
-      const token = (await createSupabaseBrowserClient().auth.getSession()).data
-        .session?.access_token;
-
-      const response = await fetch('/api/sessions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      router.push(`/session/${data.sessionId}`);
+      const buffer = await file.arrayBuffer();
+      setPendingFile(new Uint8Array(buffer), file.name);
+      setUploadModalOpen(false);
+      router.push('/session');
     } catch (error) {
       showToast({
-        message: error instanceof Error ? error.message : 'Failed to upload',
+        message:
+          error instanceof Error ? error.message : 'Failed to prepare file',
         variant: 'error',
       });
       setIsUploading(false);
     }
   };
 
-  const handleReadDocument = async (documentId: string) => {
+  const openReadPaceDialog = (documentId: string) => {
+    setReadPaceDocumentId(documentId);
+    setReadPaceDialogMode('prompt');
+    setReadPaceTouched(false);
+    setReadSessionWpm(defaultWpm);
+  };
+
+  const handleReadSessionWpmChange = (nextWpm: number) => {
+    setReadPaceTouched(true);
+    setReadSessionWpm(clampSessionWpm(nextWpm));
+  };
+
+  const handleReadDocument = async (
+    documentId: string,
+    targetWpm = defaultWpm,
+  ) => {
     setStartingDocumentId(documentId);
+    setReadPaceDialogMode(null);
 
     try {
       if (!user) {
@@ -612,7 +639,7 @@ export default function DashboardPage() {
         .insert({
           user_id: user.id,
           document_id: documentId,
-          target_wpm: defaultWpm,
+          target_wpm: clampSessionWpm(targetWpm),
           words_read: 0,
           duration_seconds: 0,
           completed: false,
@@ -1301,7 +1328,7 @@ export default function DashboardPage() {
                           </span>
                           <button
                             type="button"
-                            onClick={() => handleReadDocument(documentId)}
+                            onClick={() => openReadPaceDialog(documentId)}
                             disabled={startingDocumentId === documentId}
                             className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 transition-all hover:border-amber-300/50 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
@@ -1331,6 +1358,164 @@ export default function DashboardPage() {
           </section>
         </section>
       </main>
+
+      {readPaceDialogMode && readPaceDocumentId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="read-session-wpm-title"
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/8 bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-24 left-1/2 h-52 w-52 -translate-x-1/2 rounded-full bg-amber-500/20 blur-3xl"
+            />
+            <div className="relative rounded-[15px] bg-[rgba(9,9,11,0.9)] px-6 py-6">
+              {readPaceDialogMode === 'prompt' ? (
+                <>
+                  <div className="mb-6">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                      Session pace
+                    </p>
+                    <h2
+                      id="read-session-wpm-title"
+                      className="mt-2 text-xl font-bold text-white"
+                    >
+                      Change WPM for this session?
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">
+                      {selectedReadDocument?.title ?? 'This document'} will use
+                      your global WPM of {defaultWpm} unless you choose a
+                      temporary speed.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleReadDocument(readPaceDocumentId)}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {startingDocumentId
+                        ? 'Starting...'
+                        : `Use global WPM (${defaultWpm})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReadPaceDialogMode('customize')}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl border border-white/10 px-6 text-sm font-semibold text-zinc-300 transition-all hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Adjust for this session
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReadPaceDialogMode(null);
+                        setReadPaceDocumentId(null);
+                      }}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-10 rounded-xl text-sm font-semibold text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                      This session only
+                    </p>
+                    <h2
+                      id="read-session-wpm-title"
+                      className="mt-2 text-xl font-bold text-white"
+                    >
+                      Adjust reading speed
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">
+                      This will start the selected document at {readSessionWpm}{' '}
+                      WPM without changing your global WPM.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-5 py-4 text-center">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-amber-300">
+                      Session WPM
+                    </p>
+                    <p className="mt-1 text-3xl font-extrabold text-white">
+                      {readSessionWpm}
+                    </p>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={100}
+                    max={1000}
+                    step={10}
+                    value={readSessionWpm}
+                    onChange={(event) =>
+                      handleReadSessionWpmChange(Number(event.target.value))
+                    }
+                    disabled={Boolean(startingDocumentId)}
+                    className="mt-6 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Session words per minute"
+                  />
+                  <div className="mt-2 flex justify-between text-[11px] text-zinc-600">
+                    <span>100</span>
+                    <span>550</span>
+                    <span>1000</span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-2">
+                    {SESSION_WPM_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleReadSessionWpmChange(preset)}
+                        disabled={Boolean(startingDocumentId)}
+                        className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                          readSessionWpm === preset
+                            ? 'border-amber-400/50 bg-amber-500/15 text-amber-100'
+                            : 'border-white/10 bg-white/3 text-zinc-300 hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100'
+                        } disabled:cursor-not-allowed disabled:opacity-70`}
+                      >
+                        {preset} WPM
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleReadDocument(readPaceDocumentId, readSessionWpm)
+                      }
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {startingDocumentId
+                        ? 'Starting...'
+                        : `Start at ${readSessionWpm} WPM`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReadPaceDialogMode('prompt')}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-11 rounded-xl border border-white/10 px-6 text-sm font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {wpmModalOpen ? (
         <div
