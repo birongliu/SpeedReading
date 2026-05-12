@@ -7,6 +7,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
 import { useSessionStore } from "@/lib/store/session-store";
+import { useUploadStore } from "@/lib/store/upload-store";
 import { FocusMode, isAnonymousUser } from "@/lib/supabase/users";
 import { UploadFile } from "@/app/ui/upload-file";
 import ConvertAnonModal from "@/app/ui/convert-anon-modal";
@@ -21,6 +22,11 @@ const QUICK_ACTIONS = [
   { title: "Try sample", desc: "Practice with curated reading material." },
   { title: "Review progress", desc: "See trends once real sessions exist." },
 ];
+
+const SESSION_WPM_PRESETS = [150, 250, 350, 500];
+
+const clampSessionWpm = (value: number) =>
+  Math.min(1000, Math.max(100, Math.round(value)));
 
 // Parse RGB string format (e.g., "rgb(217, 119, 6)" or "217, 119, 6") to hex
 const parseRgbStringToHex = (rgbString: string): string => {
@@ -322,6 +328,7 @@ const formatRecentPace = (session: RecentSessionRow) => {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const setPendingFile = useUploadStore((state) => state.setPendingFile);
   const {
     error: authSessionError,
     isAuthenticated,
@@ -335,7 +342,6 @@ export default function DashboardPage() {
     updateHighlightColor,
     user,
   } = useAuthSession();
-  const [uploadWpm, setUploadWpm] = useState(250);
   const [authError, setAuthError] = useState("");
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [displayNameInput, setDisplayNameInput] = useState("");
@@ -363,6 +369,14 @@ export default function DashboardPage() {
   const [startingDocumentId, setStartingDocumentId] = useState<string | null>(
     null,
   );
+  const [readPaceDocumentId, setReadPaceDocumentId] = useState<string | null>(
+    null,
+  );
+  const [readPaceDialogMode, setReadPaceDialogMode] = useState<
+    "prompt" | "customize" | null
+  >(null);
+  const [readPaceTouched, setReadPaceTouched] = useState(false);
+  const [readSessionWpm, setReadSessionWpm] = useState(250);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -376,8 +390,17 @@ export default function DashboardPage() {
 
   const displayName = profile?.display_name?.trim() ?? "";
   const profileEmail = profile?.email ?? user?.email ?? "";
-  const defaultWpm = uploadWpm ?? profile?.default_wpm ?? 250;
+  const defaultWpm = profile?.default_wpm ?? 250;
   const focusMode = formatFocusMode(profile?.focus_mode);
+  const selectedReadDocument = recentDocuments.find(
+    (document) => document.documentId === readPaceDocumentId,
+  );
+
+  useEffect(() => {
+    if (!readPaceTouched) {
+      setReadSessionWpm(defaultWpm);
+    }
+  }, [defaultWpm, readPaceTouched]);
 
   const loadRecentDocuments = useCallback(async () => {
     setRecentDocumentsLoading(true);
@@ -570,45 +593,38 @@ export default function DashboardPage() {
   const handleFileUpload = async (file: File) => {
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      formData.append("documentName", file.name);
-      formData.append("pagesLength", "1"); // or compute real page count
-      formData.append("targetWpm", String(uploadWpm)); // Pass selected WPM for this session
-
-      const token = (await createSupabaseBrowserClient().auth.getSession()).data
-        .session?.access_token;
-
-      const response = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-
-      // Store session data in the session store
-      useSessionStore.getState().setSessionData({
-        sessionId: data.sessionId,
-        fileId: data.fileId || "",
-        targetWpm: uploadWpm, // Use the selected WPM for this session
-        words: [],
-        quizQuestions: [],
-      });
-
-      router.push(`/session/${data.sessionId}`);
+      const buffer = await file.arrayBuffer();
+      setPendingFile(new Uint8Array(buffer), file.name);
+      setUploadModalOpen(false);
+      router.push("/session");
     } catch (error) {
       showToast({
-        message: error instanceof Error ? error.message : "Failed to upload",
+        message:
+          error instanceof Error ? error.message : "Failed to prepare file",
         variant: "error",
       });
       setIsUploading(false);
     }
   };
 
-  const handleReadDocument = async (sessionId: string) => {
-    setStartingDocumentId(sessionId);
+  const openReadPaceDialog = (documentId: string) => {
+    setReadPaceDocumentId(documentId);
+    setReadPaceDialogMode("prompt");
+    setReadPaceTouched(false);
+    setReadSessionWpm(defaultWpm);
+  };
+
+  const handleReadSessionWpmChange = (nextWpm: number) => {
+    setReadPaceTouched(true);
+    setReadSessionWpm(clampSessionWpm(nextWpm));
+  };
+
+  const handleReadDocument = async (
+    documentId: string,
+    targetWpm = defaultWpm,
+  ) => {
+    setStartingDocumentId(documentId);
+    setReadPaceDialogMode(null);
 
     try {
       if (!user) {
@@ -622,12 +638,13 @@ export default function DashboardPage() {
         throw new Error("Authentication token not found.");
       }
 
-      // Call the API endpoint to get session data
-      const response = await fetch(`/api/sessions/${sessionId}`, {
-        method: "GET",
+      const response = await fetch(`/api/documents/${documentId}/sessions`, {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ targetWpm: clampSessionWpm(targetWpm) }),
       });
 
       const data = await response.json();
@@ -640,7 +657,7 @@ export default function DashboardPage() {
       useSessionStore.getState().setSessionData({
         sessionId: data.sessionId,
         fileId: data.fileId,
-        targetWpm: data.targetWpm,
+        targetWpm: data.targetWpm ?? clampSessionWpm(targetWpm),
         words: [],
         quizQuestions: [],
       });
@@ -729,13 +746,6 @@ export default function DashboardPage() {
   useEffect(() => {
     setDisplayNameInput(profile?.display_name ?? "");
   }, [profile?.display_name]);
-
-  useEffect(() => {
-    // Initialize uploadWpm with profile default when profile loads
-    if (profile?.default_wpm) {
-      setUploadWpm(profile.default_wpm);
-    }
-  }, [profile?.default_wpm]);
 
   useEffect(() => {
     if (!profileError) return;
@@ -1163,7 +1173,7 @@ export default function DashboardPage() {
                   </p>
                   <p className="text-xs font-semibold text-amber-300">saved</p>
                 </div>
-                <div className="rounded-xl border border-white/6 bg-black/20 p-4">
+                <div className="min-w-0 rounded-xl border border-white/6 bg-black/20 p-4">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-zinc-500">Highlight color</p>
                     <button
@@ -1186,7 +1196,7 @@ export default function DashboardPage() {
                       </svg>
                     </button>
                   </div>
-                  <p className="mt-2 text-xl font-bold text-white wrap-break-words">
+                  <p className="mt-2 break-words text-xl font-bold text-white">
                     {getRgbColorName(profile?.highlight_color)}
                   </p>
                   <p className="text-xs font-semibold text-amber-300">saved</p>
@@ -1336,18 +1346,11 @@ export default function DashboardPage() {
                           </span>
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              console.log(
-                                "Starting session with ID:",
-                                sessionId,
-                              );
-                              handleReadDocument(sessionId);
-                            }}
-                            disabled={startingDocumentId === sessionId}
+                            onClick={() => openReadPaceDialog(documentId)}
+                            disabled={startingDocumentId === documentId}
                             className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 transition-all hover:border-amber-300/50 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {startingDocumentId === sessionId
+                            {startingDocumentId === documentId
                               ? "Starting..."
                               : "Read"}
                           </button>
@@ -1373,6 +1376,164 @@ export default function DashboardPage() {
           </section>
         </section>
       </main>
+
+      {readPaceDialogMode && readPaceDocumentId ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="read-session-wpm-title"
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" />
+          <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/8 bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -top-24 left-1/2 h-52 w-52 -translate-x-1/2 rounded-full bg-amber-500/20 blur-3xl"
+            />
+            <div className="relative rounded-[15px] bg-[rgba(9,9,11,0.9)] px-6 py-6">
+              {readPaceDialogMode === "prompt" ? (
+                <>
+                  <div className="mb-6">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                      Session pace
+                    </p>
+                    <h2
+                      id="read-session-wpm-title"
+                      className="mt-2 text-xl font-bold text-white"
+                    >
+                      Change WPM for this session?
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">
+                      {selectedReadDocument?.title ?? "This document"} will use
+                      your global WPM of {defaultWpm} unless you choose a
+                      temporary speed.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleReadDocument(readPaceDocumentId)}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {startingDocumentId
+                        ? "Starting..."
+                        : `Use global WPM (${defaultWpm})`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReadPaceDialogMode("customize")}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl border border-white/10 px-6 text-sm font-semibold text-zinc-300 transition-all hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Adjust for this session
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReadPaceDialogMode(null);
+                        setReadPaceDocumentId(null);
+                      }}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-10 rounded-xl text-sm font-semibold text-zinc-500 transition-all hover:bg-white/5 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                      This session only
+                    </p>
+                    <h2
+                      id="read-session-wpm-title"
+                      className="mt-2 text-xl font-bold text-white"
+                    >
+                      Adjust reading speed
+                    </h2>
+                    <p className="mt-3 text-sm leading-6 text-zinc-400">
+                      This will start the selected document at {readSessionWpm}{" "}
+                      WPM without changing your global WPM.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 px-5 py-4 text-center">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-amber-300">
+                      Session WPM
+                    </p>
+                    <p className="mt-1 text-3xl font-extrabold text-white">
+                      {readSessionWpm}
+                    </p>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={100}
+                    max={1000}
+                    step={10}
+                    value={readSessionWpm}
+                    onChange={(event) =>
+                      handleReadSessionWpmChange(Number(event.target.value))
+                    }
+                    disabled={Boolean(startingDocumentId)}
+                    className="mt-6 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                    aria-label="Session words per minute"
+                  />
+                  <div className="mt-2 flex justify-between text-[11px] text-zinc-600">
+                    <span>100</span>
+                    <span>550</span>
+                    <span>1000</span>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-2">
+                    {SESSION_WPM_PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleReadSessionWpmChange(preset)}
+                        disabled={Boolean(startingDocumentId)}
+                        className={`rounded-xl border px-4 py-3 text-sm font-semibold transition-all ${
+                          readSessionWpm === preset
+                            ? "border-amber-400/50 bg-amber-500/15 text-amber-100"
+                            : "border-white/10 bg-white/3 text-zinc-300 hover:border-amber-400/25 hover:bg-amber-500/6 hover:text-amber-100"
+                        } disabled:cursor-not-allowed disabled:opacity-70`}
+                      >
+                        {preset} WPM
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleReadDocument(readPaceDocumentId, readSessionWpm)
+                      }
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {startingDocumentId
+                        ? "Starting..."
+                        : `Start at ${readSessionWpm} WPM`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReadPaceDialogMode("prompt")}
+                      disabled={Boolean(startingDocumentId)}
+                      className="h-11 rounded-xl border border-white/10 px-6 text-sm font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      Back
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {wpmModalOpen ? (
         <div
@@ -1737,51 +1898,6 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              <div className="mb-6 rounded-xl border border-white/6 bg-white/3 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold text-white">
-                    Reading speed for this session
-                  </span>
-                  <span className="text-sm font-bold text-amber-300">
-                    {uploadWpm} WPM
-                  </span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  <input
-                    type="range"
-                    min={100}
-                    max={1000}
-                    step={10}
-                    value={uploadWpm}
-                    onChange={(e) => setUploadWpm(parseInt(e.target.value, 10))}
-                    disabled={isUploading}
-                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
-                  />
-                  <div className="flex justify-between text-[11px] text-zinc-600">
-                    <span>100</span>
-                    <span>550</span>
-                    <span>1000</span>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    {[150, 250, 350, 500].map((preset) => (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() => setUploadWpm(preset)}
-                        disabled={isUploading}
-                        className={`rounded-lg border py-1.5 px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
-                          uploadWpm === preset
-                            ? "border-amber-400/50 bg-amber-500/15 text-amber-200"
-                            : "border-white/10 text-zinc-300 hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-200"
-                        }`}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
               <UploadFile
                 onFileSelect={(file) => console.log("Selected:", file)}
                 onUpload={handleFileUpload}
@@ -1834,17 +1950,17 @@ export default function DashboardPage() {
                     <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                       Previous
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className="h-12 w-12 rounded-lg border border-white/20 shadow-md"
+                        className="h-12 w-12 shrink-0 rounded-lg border border-white/20 shadow-md"
                         style={{
                           backgroundColor: getColorHex(
                             profile?.highlight_color,
                           ),
                         }}
                       />
-                      <div className="flex flex-col">
-                        <p className="font-mono text-sm font-bold text-zinc-300">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="max-w-full break-all font-mono text-sm font-bold text-zinc-300">
                           {getColorHex(profile?.highlight_color).toUpperCase()}
                         </p>
                         <p className="text-xs text-zinc-500">Current</p>
@@ -1855,16 +1971,16 @@ export default function DashboardPage() {
                     <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                       New
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <input
                         type="color"
                         value={highlightColorInput}
                         onChange={(e) => setHighlightColorInput(e.target.value)}
-                        className="h-12 w-12 cursor-pointer rounded-lg border border-white/20 shadow-md"
+                        className="h-12 w-12 shrink-0 cursor-pointer rounded-lg border border-white/20 shadow-md"
                         aria-label="Select highlight color"
                       />
-                      <div className="flex flex-col">
-                        <p className="font-mono text-sm font-bold text-white">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="max-w-full break-all font-mono text-sm font-bold text-white">
                           {highlightColorInput.toUpperCase()}
                         </p>
                         <p className="text-xs text-zinc-500">Selected</p>

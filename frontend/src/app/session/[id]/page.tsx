@@ -42,6 +42,40 @@ const getRgbAsHex = (rgbString?: string | null): string => {
   return rgbToHex(r, g, b);
 };
 
+function calculateLiveActualWpm({
+  wordsRead,
+  elapsedMs,
+  targetWpm,
+}: {
+  wordsRead: number;
+  elapsedMs: number;
+  targetWpm: number;
+}) {
+  if (wordsRead <= 0 || elapsedMs <= 0) return 0;
+  if (elapsedMs < 3000) return targetWpm;
+
+  const elapsedMinutes = elapsedMs / 60000;
+  const rawWpm = wordsRead / elapsedMinutes;
+
+  return Math.round(rawWpm);
+}
+
+function calculateFinalWpm(wordsRead: number, elapsedMs: number) {
+  if (wordsRead <= 0 || elapsedMs <= 0) return 0;
+
+  const elapsedMinutes = elapsedMs / 60000;
+  const rawWpm = wordsRead / elapsedMinutes;
+
+  return Math.ceil(rawWpm - 0.5);
+}
+
+function formatElapsedTime(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
 export default function ReadingSessionPage({ params }: SessionPageProps) {
   const router = useRouter();
   const { id: sessionId } = use(params);
@@ -52,29 +86,102 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const [wpm, setWpm] = useState(profile?.default_wpm || 250);
   const [words, setWords] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [durationSeconds, setDurationSeconds] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [quizQuestions, setQuizQuestions] = useState<Question[]>([]);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const sessionEndedRef = useRef(false);
   const currentWordRef = useRef<HTMLSpanElement | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const accumulatedMsRef = useRef(0);
+  const playbackFrameRef = useRef<number | null>(null);
+  const lastElapsedUpdateRef = useRef(0);
+  const playbackStartedAtRef = useRef<number | null>(null);
+  const playbackAnchorIndexRef = useRef(0);
+  const currentWordIndexRef = useRef(0);
 
-  const wordsRead = words.length ? currentWordIndex + 1 : 0;
-  const achievedWpm = useMemo(() => {
-    if (!durationSeconds || !wordsRead) return null;
-    return Math.round(wordsRead / (durationSeconds / 60));
-  }, [durationSeconds, wordsRead]);
+  const wordsRead = words.length
+    ? Math.min(currentWordIndex + 1, words.length)
+    : 0;
+  const actualWpm = useMemo(
+    () =>
+      calculateLiveActualWpm({
+        wordsRead,
+        elapsedMs,
+        targetWpm: wpm,
+      }),
+    [elapsedMs, wordsRead, wpm],
+  );
+  const achievedWpm = actualWpm || null;
   const isComplete = words.length > 0 && currentWordIndex === words.length - 1;
+  const formattedDuration = useMemo(
+    () => formatElapsedTime(elapsedMs),
+    [elapsedMs],
+  );
 
-  const formattedDuration = useMemo(() => {
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = durationSeconds % 60;
-    return `${minutes}:${String(seconds).padStart(2, "0")}`;
-  }, [durationSeconds]);
+  const getActiveElapsedMs = useCallback(() => {
+    if (startedAtRef.current === null) {
+      return accumulatedMsRef.current;
+    }
+
+    return accumulatedMsRef.current + performance.now() - startedAtRef.current;
+  }, []);
+
+  useEffect(() => {
+    currentWordIndexRef.current = currentWordIndex;
+  }, [currentWordIndex]);
+
+  const pauseReading = useCallback(() => {
+    if (isPaused) return;
+
+    const activeElapsedMs = getActiveElapsedMs();
+    accumulatedMsRef.current = activeElapsedMs;
+    startedAtRef.current = null;
+    playbackStartedAtRef.current = null;
+    playbackAnchorIndexRef.current = currentWordIndex;
+    setElapsedMs(activeElapsedMs);
+    setIsPaused(true);
+  }, [currentWordIndex, getActiveElapsedMs, isPaused]);
+
+  const resumeReading = useCallback(() => {
+    if (!isPaused || isComplete) return;
+
+    const now = performance.now();
+    startedAtRef.current = now;
+    playbackStartedAtRef.current = now;
+    playbackAnchorIndexRef.current = currentWordIndex;
+    setIsPaused(false);
+  }, [currentWordIndex, isComplete, isPaused]);
+
+  const togglePaused = useCallback(() => {
+    if (isPaused) {
+      resumeReading();
+    } else {
+      pauseReading();
+    }
+  }, [isPaused, pauseReading, resumeReading]);
+
+  const seekToWordIndex = useCallback(
+    (nextIndex: number) => {
+      if (!words.length) return;
+
+      const clampedIndex = Math.min(Math.max(nextIndex, 0), words.length - 1);
+      const activeElapsedMs = getActiveElapsedMs();
+      const now = performance.now();
+
+      playbackAnchorIndexRef.current = clampedIndex;
+      playbackStartedAtRef.current = isPaused ? null : now;
+      lastElapsedUpdateRef.current = activeElapsedMs;
+      currentWordIndexRef.current = clampedIndex;
+      setCurrentWordIndex(clampedIndex);
+      setElapsedMs(activeElapsedMs);
+    },
+    [getActiveElapsedMs, isPaused, words.length],
+  );
 
   const finishReadingSession = useCallback(
-    async (completed: boolean) => {
+    async (completed: boolean, finalElapsedMs = getActiveElapsedMs()) => {
       if (!words.length || sessionEndedRef.current) {
         return;
       }
@@ -89,10 +196,11 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         return;
       }
 
+      const finalWordsRead = completed ? words.length : wordsRead;
       const payload = {
-        words_read: completed ? words.length : wordsRead,
-        achieved_wpm: achievedWpm,
-        duration_seconds: durationSeconds,
+        words_read: finalWordsRead,
+        achieved_wpm: calculateFinalWpm(finalWordsRead, finalElapsedMs),
+        duration_seconds: Math.round(finalElapsedMs / 1000),
         completed,
       };
 
@@ -113,8 +221,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       sessionEndedRef.current = true;
     },
     [
-      achievedWpm,
-      durationSeconds,
+      getActiveElapsedMs,
       session?.access_token,
       sessionId,
       words.length,
@@ -185,7 +292,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
         const data = await response.json();
         console.log("Session Data:", data);
-        return { sessionId: data.session.id, fileid: data.session.file_id };
+        if (typeof data.targetWpm === "number") {
+          setWpm(data.targetWpm);
+        }
+        return { sessionId: data.sessionId, fileid: data.fileId };
       } catch (err) {
         console.error("Error:", err);
         setError(err instanceof Error ? err.message : "Failed to load session");
@@ -474,29 +584,72 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   }, [currentWordIndex, profile?.focus_mode]);
 
   useEffect(() => {
-    if (isPaused || !words.length) return;
+    if (playbackFrameRef.current !== null) {
+      cancelAnimationFrame(playbackFrameRef.current);
+      playbackFrameRef.current = null;
+    }
 
-    const msPerWord = 60000 / wpm;
-    const timer = setTimeout(() => {
-      if (currentWordIndex < words.length - 1) {
-        setCurrentWordIndex(currentWordIndex + 1);
-      } else {
-        setIsPaused(true);
+    if (isPaused || !words.length || sessionEndedRef.current) return;
+
+    const wordDelayMs = 60000 / wpm;
+    const startedAt = performance.now();
+
+    if (startedAtRef.current === null) {
+      startedAtRef.current = startedAt;
+    }
+
+    if (playbackStartedAtRef.current === null) {
+      playbackStartedAtRef.current = startedAt;
+      playbackAnchorIndexRef.current = currentWordIndexRef.current;
+    }
+
+    const updatePlayback = () => {
+      const now = performance.now();
+      const activeElapsedMs = getActiveElapsedMs();
+      const playbackElapsedMs = now - (playbackStartedAtRef.current ?? now);
+      const expectedIndex =
+        playbackAnchorIndexRef.current +
+        Math.floor(playbackElapsedMs / wordDelayMs);
+      const nextIndex = Math.min(expectedIndex, words.length - 1);
+
+      setCurrentWordIndex((current) => {
+        if (current === nextIndex) return current;
+
+        currentWordIndexRef.current = nextIndex;
+        return nextIndex;
+      });
+
+      if (
+        activeElapsedMs - lastElapsedUpdateRef.current >= 250 ||
+        expectedIndex >= words.length
+      ) {
+        lastElapsedUpdateRef.current = activeElapsedMs;
+        setElapsedMs(activeElapsedMs);
       }
-    }, msPerWord);
 
-    return () => clearTimeout(timer);
-  }, [currentWordIndex, isPaused, wpm, words.length]);
+      if (expectedIndex >= words.length) {
+        accumulatedMsRef.current = activeElapsedMs;
+        startedAtRef.current = null;
+        playbackStartedAtRef.current = null;
+        playbackAnchorIndexRef.current = words.length - 1;
+        setElapsedMs(activeElapsedMs);
+        setIsPaused(true);
+        playbackFrameRef.current = null;
+        return;
+      }
 
-  useEffect(() => {
-    if (isPaused || !words.length || isComplete) return;
+      playbackFrameRef.current = requestAnimationFrame(updatePlayback);
+    };
 
-    const timer = window.setInterval(() => {
-      setDurationSeconds((current) => current + 1);
-    }, 1000);
+    playbackFrameRef.current = requestAnimationFrame(updatePlayback);
 
-    return () => window.clearInterval(timer);
-  }, [isComplete, isPaused, words.length]);
+    return () => {
+      if (playbackFrameRef.current !== null) {
+        cancelAnimationFrame(playbackFrameRef.current);
+        playbackFrameRef.current = null;
+      }
+    };
+  }, [getActiveElapsedMs, isPaused, wpm, words.length]);
 
   useEffect(() => {
     if (!isComplete || !isPaused || sessionEndedRef.current) return;
@@ -519,10 +672,12 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         return;
       }
 
+      const finalElapsedMs = getActiveElapsedMs();
+      const finalWordsRead = isComplete ? words.length : wordsRead;
       const payload = JSON.stringify({
-        words_read: isComplete ? words.length : wordsRead,
-        achieved_wpm: achievedWpm,
-        duration_seconds: durationSeconds,
+        words_read: finalWordsRead,
+        achieved_wpm: calculateFinalWpm(finalWordsRead, finalElapsedMs),
+        duration_seconds: Math.round(finalElapsedMs / 1000),
         completed: isComplete,
       });
 
@@ -543,8 +698,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [
-    achievedWpm,
-    durationSeconds,
+    getActiveElapsedMs,
     isComplete,
     session?.access_token,
     sessionId,
@@ -621,38 +775,50 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       {/* Main Reading Area */}
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
         {showQuiz ? (
-          <div className="rounded-3xl border border-white/8 bg-white px-6 py-6 text-zinc-900 shadow-2xl shadow-black/30 sm:px-8">
-            {quizScore === null ? (
-              <>
-                <QuizScreen
-                  chunkTitle="Reading session"
-                  wpm={achievedWpm ?? wpm}
-                  questions={quizQuestions}
-                  onSubmit={submitComprehensionCheck}
-                />
-                {quizSubmitting ? (
-                  <p className="mt-3 text-sm text-gray-500">
-                    Saving comprehension check...
+          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[rgba(13,13,18,0.9)] px-5 py-6 shadow-2xl shadow-black/30 sm:px-8">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-amber-500/15 blur-3xl"
+            />
+            <div className="relative">
+              {quizScore === null ? (
+                <>
+                  <QuizScreen
+                    chunkTitle="Reading session"
+                    wpm={achievedWpm ?? wpm}
+                    questions={quizQuestions}
+                    onSubmit={submitComprehensionCheck}
+                  />
+                  {quizSubmitting ? (
+                    <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-zinc-400">
+                      Saving comprehension check...
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="mx-auto max-w-md py-8 text-center">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                    Retention
+                  </span>
+                  <h2 className="mt-2 text-2xl font-bold text-white">
+                    Comprehension saved
+                  </h2>
+                  <p className="mt-4 text-4xl font-extrabold text-amber-300">
+                    Score: {quizScore}%
                   </p>
-                ) : null}
-              </>
-            ) : (
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-950">
-                  Comprehension saved
-                </h2>
-                <p className="mt-3 text-lg font-semibold text-blue-700">
-                  Score: {quizScore}%
-                </p>
-                <button
-                  type="button"
-                  onClick={handleExitSession}
-                  className="mt-6 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  Back to Dashboard
-                </button>
-              </div>
-            )}
+                  <p className="mt-3 text-sm leading-6 text-zinc-400">
+                    Your quiz result has been added to your progress analytics.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleExitSession}
+                    className="mt-6 h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -786,27 +952,19 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex gap-2">
                         <button
-                          onClick={() => setIsPaused(!isPaused)}
+                          onClick={togglePaused}
                           className="flex-1 rounded-lg bg-linear-to-r from-amber-500 to-orange-600 px-4 py-2 font-semibold text-white transition-all hover:from-amber-400 hover:to-orange-500 sm:flex-none sm:px-6"
                         >
                           {isPaused ? "Resume" : "Pause"}
                         </button>
                         <button
-                          onClick={() =>
-                            setCurrentWordIndex(
-                              Math.max(0, currentWordIndex - 1),
-                            )
-                          }
+                          onClick={() => seekToWordIndex(currentWordIndex - 1)}
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
                           ← Back
                         </button>
                         <button
-                          onClick={() =>
-                            setCurrentWordIndex(
-                              Math.min(words.length - 1, currentWordIndex + 1),
-                            )
-                          }
+                          onClick={() => seekToWordIndex(currentWordIndex + 1)}
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
                           Next →

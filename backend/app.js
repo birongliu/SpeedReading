@@ -49,11 +49,17 @@ function isPdfBytes(inputBuffer) {
 }
 
 async function extractPdfText(pdfBuffer) {
-  const data = await new PDFParse({ data: pdfBuffer }).getText();
-  console.log(
-    `Pages: ${data.pages.length}, extracted text length: ${data.text.length}`,
-  );
-  return data.text || "";
+  const parser = new PDFParse({ data: pdfBuffer });
+
+  try {
+    const data = await parser.getText();
+    console.log(
+      `Pages: ${data.total}, extracted text length: ${data.text.length}`,
+    );
+    return data.text || "";
+  } finally {
+    await parser.destroy();
+  }
 }
 async function requireSupabaseAuth(req, res, next) {
   if (!supabase) {
@@ -100,6 +106,10 @@ app.get("/", (req, res) => {
     message: "SpeedReading backend is running",
     status: "ok",
   });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 app.post(
@@ -178,6 +188,10 @@ app.post(
   },
 );
 
-app.listen(PORT, () => {
-  console.log(`Server listening on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server listening on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = app;
