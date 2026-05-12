@@ -282,10 +282,15 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
 
     const resolver = async () => {
+      console.log("Resolver running for sessionId:", sessionId);
+
       // Check if this is a sample reading first
       if (sessionId.startsWith("sample-")) {
-        // For sample sessions, always use the session store
+        console.log("Detected sample session");
+        
+        // First, try to use stored session data
         const storedSessionData = useSessionStore.getState().sessionData;
+        console.log("Stored session data:", storedSessionData);
 
         if (storedSessionData && storedSessionData.sessionId === sessionId) {
           console.log(
@@ -301,11 +306,42 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
           setQuizQuestions(storedSessionData.quizQuestions || []);
           setIsLoading(false);
           useSessionStore.getState().clearSessionData();
-        } else {
-          // Sample session data not found in store - shouldn't happen
-          setError("Sample reading data not found. Please try again.");
+          return;
+        }
+
+        // If no stored data, load from API using the sample ID
+        console.log("Store data not found, loading from API");
+        const sampleId = sessionId.replace("sample-", "");
+        
+        try {
+          const response = await fetch(`/api/sample-readings?id=${sampleId}`);
+          if (!response.ok) {
+            throw new Error("Failed to load sample reading");
+          }
+
+          const reading = await response.json();
+          console.log("Loaded sample reading:", reading);
+
+          // Split text into words
+          const words = reading.text
+            .split(/\s+/)
+            .filter((w: string) => w.length > 0);
+
+          // Set default WPM or use profile's default
+          const defaultWpm = profile?.default_wpm || 250;
+          setWpm(defaultWpm);
+          setWords(words);
+          setQuizQuestions(reading.questions || []);
+          setIsLoading(false);
+        } catch (err) {
+          console.error("Failed to load sample reading:", err);
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load sample reading. Please try again.",
+          );
           showToast({
-            message: "Sample reading data not found",
+            message: "Failed to load sample reading",
             variant: "error",
           });
           setIsLoading(false);
