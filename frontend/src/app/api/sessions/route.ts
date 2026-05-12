@@ -1,45 +1,46 @@
-import { createClient } from '@supabase/supabase-js';
-import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const authHeader = req.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const token = authHeader.split(' ')[1];
+  const token = authHeader.split(" ")[1];
 
   // Use FormData instead of JSON to preserve raw binary file bytes
   const formData = await req.formData();
-  const file = formData.get('file') as File | null;
-  const documentName = formData.get('documentName') as string | null;
-  const pagesLength = Number(formData.get('pagesLength') ?? 1);
+  const file = formData.get("file") as File | null;
+  const documentName = formData.get("documentName") as string | null;
+  const pagesLength = Number(formData.get("pagesLength") ?? 1);
+  const targetWpmParam = formData.get("targetWpm") as string | null;
 
   if (!file) {
-    return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+    return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
 
   if (!documentName) {
     return NextResponse.json(
-      { error: 'No document name provided' },
+      { error: "No document name provided" },
       { status: 400 },
     );
   }
 
   if (!pagesLength) {
     return NextResponse.json(
-      { error: 'No pages length provided' },
+      { error: "No pages length provided" },
       { status: 400 },
     );
   }
 
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(
+  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(
     /\/$/,
-    '',
+    "",
   );
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '';
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -53,21 +54,30 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (userError || !user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 401 });
+    return NextResponse.json({ error: "User not found" }, { status: 401 });
   }
 
   let fileId: string | null = null;
   let storagePath: string | null = null;
   let targetWpm = 250;
 
-  const { data: profileData, error: profileError } = await supabase
-    .from('users')
-    .select('default_wpm')
-    .eq('id', user.id)
-    .single();
+  // Use provided WPM if available, otherwise fall back to profile default
+  if (targetWpmParam) {
+    const parsedWpm = parseInt(targetWpmParam, 10);
+    if (!Number.isNaN(parsedWpm) && parsedWpm >= 100 && parsedWpm <= 1000) {
+      targetWpm = parsedWpm;
+    }
+  } else {
+    // Fall back to profile default if no WPM provided
+    const { data: profileData, error: profileError } = await supabase
+      .from("users")
+      .select("default_wpm")
+      .eq("id", user.id)
+      .single();
 
-  if (!profileError && typeof profileData?.default_wpm === 'number') {
-    targetWpm = profileData.default_wpm;
+    if (!profileError && typeof profileData?.default_wpm === "number") {
+      targetWpm = profileData.default_wpm;
+    }
   }
 
   try {
@@ -76,9 +86,9 @@ export async function POST(req: NextRequest) {
     const filePath = `${user.id}/${fileName}`;
 
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('speed reading-documents')
+      .from("speed reading-documents")
       .upload(filePath, arrayBuffer, {
-        contentType: 'application/pdf',
+        contentType: "application/pdf",
       });
 
     if (uploadError) {
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: `File processing failed: ${
-          error instanceof Error ? error.message : 'Unknown error'
+          error instanceof Error ? error.message : "Unknown error"
         }`,
       },
       { status: 400 },
@@ -103,7 +113,7 @@ export async function POST(req: NextRequest) {
   // Create document record in the database
   if (storagePath) {
     const { data: documentData, error: documentError } = await supabase
-      .from('documents')
+      .from("documents")
       .insert({
         user_id: user.id,
         original_filename: documentName,
@@ -137,7 +147,7 @@ export async function POST(req: NextRequest) {
   });
 
   const { data, error } = await supabase
-    .from('reading_sessions')
+    .from("reading_sessions")
     .insert({
       user_id: user.id,
       document_id: fileId,
@@ -152,9 +162,12 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    console.error('Error creating session:', error);
+    console.error("Error creating session:", error);
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ sessionId: data.id, fileId: data.document_id }, { status: 201 });
+  return NextResponse.json(
+    { sessionId: data.id, fileId: data.document_id },
+    { status: 201 },
+  );
 }

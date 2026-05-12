@@ -40,67 +40,44 @@ export async function POST(req: NextRequest, { params }: PostSessionParams) {
       return NextResponse.json({ error: "User not found" }, { status: 401 });
     }
 
-    // Verify document exists and belongs to the user
-    const { data: document, error: docError } = await supabase
-      .from("documents")
-      .select("id")
-      .eq("id", documentId)
-      .eq("user_id", user.id)
-      .single();
 
-    if (docError || !document) {
-      return NextResponse.json(
-        { error: "Document not found" },
-        { status: 404 },
-      );
-    }
-
-    // Get user's default WPM
-    const { data: profileData, error: profileError } = await supabase
-      .from("users")
-      .select("default_wpm")
-      .eq("id", user.id)
-      .single();
-
-    const targetWpm =
-      profileData && typeof profileData.default_wpm === "number"
-        ? profileData.default_wpm
-        : 250;
-
-    // Create a new reading session
-    const { data: newSession, error: sessionError } = await supabase
+    // Find existing reading session for this document
+    const { data: existingSession, error: sessionError } = await supabase
       .from("reading_sessions")
-      .insert({
-        user_id: user.id,
-        document_id: documentId,
-        target_wpm: targetWpm,
-        words_read: 0,
-        duration_seconds: 0,
-        completed: false,
-        start_page: 1,
-        end_page: 1,
-      })
-      .select("id, created_at, completed")
+      .select("id, created_at, completed, target_wpm")
+      .eq("user_id", user.id)
+      .eq("document_id", documentId)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single();
 
-    if (sessionError || !newSession) {
+      console.log("Existing session query result:", { existingSession, sessionError });
+
+    if (sessionError && sessionError.code !== "PGRST116") {
       return NextResponse.json(
         {
-          error: sessionError?.message ?? "Failed to create reading session",
+          error: sessionError?.message ?? "Failed to fetch reading session",
         },
         { status: 400 },
       );
     }
 
+    if (!existingSession) {
+      return NextResponse.json(
+        { error: "No reading session found for this document" },
+        { status: 404 },
+      );
+    }
+
     return NextResponse.json(
       {
-        sessionId: newSession.id,
-        fileId: document.file_id,
-        targetWpm,
-        created_at: newSession.created_at,
-        completed: newSession.completed,
+        sessionId: existingSession.id,
+        fileId: documentId,
+        targetWpm: existingSession.target_wpm,
+        created_at: existingSession.created_at,
+        completed: existingSession.completed,
       },
-      { status: 201 },
+      { status: 200 },
     );
   } catch (error) {
     console.error("Error creating session:", error);

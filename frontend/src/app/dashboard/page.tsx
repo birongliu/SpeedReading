@@ -576,6 +576,7 @@ export default function DashboardPage() {
       formData.append("file", file, file.name);
       formData.append("documentName", file.name);
       formData.append("pagesLength", "1"); // or compute real page count
+      formData.append("targetWpm", String(uploadWpm)); // Pass selected WPM for this session
 
       const token = (await createSupabaseBrowserClient().auth.getSession()).data
         .session?.access_token;
@@ -593,7 +594,7 @@ export default function DashboardPage() {
       useSessionStore.getState().setSessionData({
         sessionId: data.sessionId,
         fileId: data.fileId || "",
-        targetWpm: defaultWpm,
+        targetWpm: uploadWpm, // Use the selected WPM for this session
         words: [],
         quizQuestions: [],
       });
@@ -608,8 +609,8 @@ export default function DashboardPage() {
     }
   };
 
-  const handleReadDocument = async (documentId: string) => {
-    setStartingDocumentId(documentId);
+  const handleReadDocument = async (sessionId: string) => {
+    setStartingDocumentId(sessionId);
 
     try {
       if (!user) {
@@ -623,9 +624,9 @@ export default function DashboardPage() {
         throw new Error("Authentication token not found.");
       }
 
-      // Call the new API endpoint to create session and get session data
-      const response = await fetch(`/api/documents/${documentId}/sessions`, {
-        method: "POST",
+      // Call the API endpoint to get session data
+      const response = await fetch(`/api/sessions/${sessionId}`, {
+        method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -730,6 +731,13 @@ export default function DashboardPage() {
   useEffect(() => {
     setDisplayNameInput(profile?.display_name ?? "");
   }, [profile?.display_name]);
+
+  useEffect(() => {
+    // Initialize uploadWpm with profile default when profile loads
+    if (profile?.default_wpm) {
+      setUploadWpm(profile.default_wpm);
+    }
+  }, [profile?.default_wpm]);
 
   useEffect(() => {
     if (!profileError) return;
@@ -1331,14 +1339,17 @@ export default function DashboardPage() {
                           <button
                             type="button"
                             onClick={(e) => {
-                              e.preventDefault()
-                              console.log("Starting document with ID:", documentId);
-                               handleReadDocument(documentId);
+                              e.preventDefault();
+                              console.log(
+                                "Starting session with ID:",
+                                sessionId,
+                              );
+                              handleReadDocument(sessionId);
                             }}
-                            disabled={startingDocumentId === documentId}
+                            disabled={startingDocumentId === sessionId}
                             className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 transition-all hover:border-amber-300/50 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            {startingDocumentId === documentId
+                            {startingDocumentId === sessionId
                               ? "Starting..."
                               : "Read"}
                           </button>
@@ -1729,19 +1740,48 @@ export default function DashboardPage() {
               </div>
 
               <div className="mb-6 rounded-xl border border-white/6 bg-white/3 p-4">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-semibold text-white">
-                    Reading speed
+                    Reading speed for this session
                   </span>
-                  <span className="text-xs font-medium text-zinc-400">
-                    Uses your saved default
+                  <span className="text-sm font-bold text-amber-300">
+                    {uploadWpm} WPM
                   </span>
                 </div>
-                <p className="text-sm leading-6 text-zinc-400">
-                  Uploaded sessions use the reading speed from your profile
-                  settings. Update your default speed there before starting a
-                  session if needed.
-                </p>
+                <div className="flex flex-col gap-3">
+                  <input
+                    type="range"
+                    min={100}
+                    max={1000}
+                    step={10}
+                    value={uploadWpm}
+                    onChange={(e) => setUploadWpm(parseInt(e.target.value, 10))}
+                    disabled={isUploading}
+                    className="h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
+                  />
+                  <div className="flex justify-between text-[11px] text-zinc-600">
+                    <span>100</span>
+                    <span>550</span>
+                    <span>1000</span>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {[150, 250, 350, 500].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setUploadWpm(preset)}
+                        disabled={isUploading}
+                        className={`rounded-lg border py-1.5 px-3 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-70 ${
+                          uploadWpm === preset
+                            ? "border-amber-400/50 bg-amber-500/15 text-amber-200"
+                            : "border-white/10 text-zinc-300 hover:border-amber-400/30 hover:bg-amber-500/10 hover:text-amber-200"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <UploadFile
