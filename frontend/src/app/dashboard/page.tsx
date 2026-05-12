@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
+import { useSessionStore } from "@/lib/store/session-store";
 import { FocusMode, isAnonymousUser } from "@/lib/supabase/users";
 import { UploadFile } from "@/app/ui/upload-file";
 import ConvertAnonModal from "@/app/ui/convert-anon-modal";
@@ -373,7 +374,7 @@ export default function DashboardPage() {
 
   const displayName = profile?.display_name?.trim() ?? "";
   const profileEmail = profile?.email ?? user?.email ?? "";
-  const defaultWpm = profile?.default_wpm ?? 250;
+  const defaultWpm = uploadWpm ?? profile?.default_wpm ?? 250;
   const focusMode = formatFocusMode(profile?.focus_mode);
 
   const loadRecentDocuments = useCallback(async () => {
@@ -588,6 +589,15 @@ export default function DashboardPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
 
+      // Store session data in the session store
+      useSessionStore.getState().setSessionData({
+        sessionId: data.sessionId,
+        fileId: data.fileId || "",
+        targetWpm: defaultWpm,
+        words: [],
+        quizQuestions: [],
+      });
+
       router.push(`/session/${data.sessionId}`);
     } catch (error) {
       showToast({
@@ -606,27 +616,37 @@ export default function DashboardPage() {
         throw new Error("You need to be logged in to read documents.");
       }
 
-      const supabase = createSupabaseBrowserClient();
-      const { data: newSession, error } = await supabase
-        .from("reading_sessions")
-        .insert({
-          user_id: user.id,
-          document_id: documentId,
-          target_wpm: defaultWpm,
-          words_read: 0,
-          duration_seconds: 0,
-          completed: false,
-          start_page: 1,
-          end_page: 1,
-        })
-        .select("id")
-        .single();
+      const token = (await createSupabaseBrowserClient().auth.getSession()).data
+        .session?.access_token;
 
-      if (error || !newSession) {
-        throw new Error(error?.message ?? "Failed to create reading session.");
+      if (!token) {
+        throw new Error("Authentication token not found.");
       }
 
-      router.push(`/session/${newSession.id}`);
+      // Call the new API endpoint to create session and get session data
+      const response = await fetch(`/api/documents/${documentId}/sessions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Failed to start reading session.");
+      }
+
+      // Store session data in the session store
+      useSessionStore.getState().setSessionData({
+        sessionId: data.sessionId,
+        fileId: data.fileId,
+        targetWpm: data.targetWpm,
+        words: [],
+        quizQuestions: [],
+      });
+
+      router.push(`/session/${data.sessionId}`);
     } catch (error) {
       showToast({
         message:
@@ -1310,7 +1330,11 @@ export default function DashboardPage() {
                           </span>
                           <button
                             type="button"
-                            onClick={() => handleReadDocument(documentId)}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              console.log("Starting document with ID:", documentId);
+                               handleReadDocument(documentId);
+                            }}
                             disabled={startingDocumentId === documentId}
                             className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-100 transition-all hover:border-amber-300/50 hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                           >

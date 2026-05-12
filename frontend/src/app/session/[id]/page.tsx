@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
 import { useUploadStore } from "@/lib/store/upload-store";
+import { useSessionStore } from "@/lib/store/session-store";
 import { QuizScreen } from "@/app/ui/QuizScreen";
 import { rgbToHex } from "@/lib/color-utils";
 import type { Question } from "@/lib/types";
@@ -142,7 +143,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
         const data = await response.json();
         console.log("Session Data:", data);
-        setIsLoading(false);
         return { sessionId: data.session.id, fileid: data.session.file_id };
       } catch (err) {
         console.error("Error:", err);
@@ -217,6 +217,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         }
         setWords(allWords);
         setQuizQuestions(allQuestions);
+        setIsLoading(false);
       } catch (err) {
         console.error("AI Analysis Error:", err);
         setError(err instanceof Error ? err.message : "AI analysis failed");
@@ -224,14 +225,45 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
           message: "Failed to analyze file content",
           variant: "error",
         });
+        setIsLoading(false);
       }
     };
 
     const resolver = async () => {
-      const sessionData = await fetchSessionData();
-      if (sessionData) {
-        console.log("Session fetched successfully:", sessionData);
-        await analyzeFileContent(sessionData.fileid);
+      // Check if session data is available from the store
+      const storedSessionData = useSessionStore.getState().sessionData;
+
+      if (storedSessionData && storedSessionData.sessionId === sessionId) {
+        // Use stored session data
+        console.log("Using stored session data:", storedSessionData);
+
+        // Set wpm from stored target WPM
+        if (storedSessionData.targetWpm) {
+          setWpm(storedSessionData.targetWpm);
+        }
+
+        if (storedSessionData.fileId) {
+          // Analyze file content
+          await analyzeFileContent(storedSessionData.fileId);
+        } else {
+          // No file ID in store, fetch from API
+          const sessionData = await fetchSessionData();
+          if (sessionData) {
+            console.log("Session fetched successfully:", sessionData);
+            await analyzeFileContent(sessionData.fileid);
+          }
+        }
+
+        // Clear the stored session data after using it
+        useSessionStore.getState().clearSessionData();
+      } else {
+        // Fetch session data from API
+        const sessionData = await fetchSessionData();
+        if (sessionData) {
+          console.log("Session fetched successfully:", sessionData);
+          setIsLoading(false);
+          await analyzeFileContent(sessionData.fileid);
+        }
       }
     };
 
