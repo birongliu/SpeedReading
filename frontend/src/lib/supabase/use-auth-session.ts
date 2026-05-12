@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect } from 'react';
-import { useShallow } from 'zustand/react/shallow';
-import { initializeAuthState, useAuthStore } from './auth-store';
+import { useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { initializeAuthState, useAuthStore } from "./auth-store";
 
 export function useAuthSession() {
   const auth = useAuthStore(
@@ -16,6 +16,7 @@ export function useAuthSession() {
       updateFocusMode: state.updateFocusMode,
       updateDefaultWpm: state.updateDefaultWpm,
       updateDisplayName: state.updateDisplayName,
+      updateHighlightColor: state.updateHighlightColor,
       user: state.user,
     })),
   );
@@ -27,7 +28,7 @@ export function useAuthSession() {
   return {
     ...auth,
     error: auth.authError,
-    isAuthenticated: auth.status === 'authenticated',
-    isLoading: auth.status === 'loading',
+    isAuthenticated: auth.status === "authenticated",
+    isLoading: auth.status === "loading",
   };
 }

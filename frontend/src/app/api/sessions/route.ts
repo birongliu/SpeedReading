@@ -156,5 +156,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ sessionId: data.id }, { status: 201 });
+  return NextResponse.json({ sessionId: data.id, fileId: data.document_id }, { status: 201 });
 }

@@ -6,13 +6,40 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
 import { useUploadStore } from "@/lib/store/upload-store";
+import { useSessionStore } from "@/lib/store/session-store";
 import { QuizScreen } from "@/app/ui/QuizScreen";
+import { rgbToHex } from "@/lib/color-utils";
 import type { Question } from "@/lib/types";
 
 type SessionPageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+const DEFAULT_HIGHLIGHT_COLOR = "#FBBF24";
+const LEGACY_HIGHLIGHT_COLOR_MAP: Record<string, string> = {
+  amber: "#FBBF24",
+};
+
+// Helper function to convert saved color formats to hex for styling
+const getRgbAsHex = (rgbString?: string | null): string => {
+  if (!rgbString) return DEFAULT_HIGHLIGHT_COLOR;
+
+  const normalizedColor = rgbString.trim();
+
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedColor)) {
+    return normalizedColor.toUpperCase();
+  }
+
+  const legacyHex = LEGACY_HIGHLIGHT_COLOR_MAP[normalizedColor.toLowerCase()];
+  if (legacyHex) return legacyHex;
+
+  const match = normalizedColor.match(/\d+/g);
+  if (!match || match.length < 3) return DEFAULT_HIGHLIGHT_COLOR;
+
+  const [r, g, b] = match.slice(0, 3).map(Number);
+  return rgbToHex(r, g, b);
 };
 
 export default function ReadingSessionPage({ params }: SessionPageProps) {
@@ -132,7 +159,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
         const data = await response.json();
         console.log("Session Data:", data);
-        setIsLoading(false);
         return { sessionId: data.session.id, fileid: data.session.file_id };
       } catch (err) {
         console.error("Error:", err);
@@ -207,6 +233,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         }
         setWords(allWords);
         setQuizQuestions(allQuestions);
+        setIsLoading(false);
       } catch (err) {
         console.error("AI Analysis Error:", err);
         setError(err instanceof Error ? err.message : "AI analysis failed");
@@ -214,14 +241,45 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
           message: "Failed to analyze file content",
           variant: "error",
         });
+        setIsLoading(false);
       }
     };
 
     const resolver = async () => {
-      const sessionData = await fetchSessionData();
-      if (sessionData) {
-        console.log("Session fetched successfully:", sessionData);
-        await analyzeFileContent(sessionData.fileid);
+      // Check if session data is available from the store
+      const storedSessionData = useSessionStore.getState().sessionData;
+
+      if (storedSessionData && storedSessionData.sessionId === sessionId) {
+        // Use stored session data
+        console.log("Using stored session data:", storedSessionData);
+
+        // Set wpm from stored target WPM
+        if (storedSessionData.targetWpm) {
+          setWpm(storedSessionData.targetWpm);
+        }
+
+        if (storedSessionData.fileId) {
+          // Analyze file content
+          await analyzeFileContent(storedSessionData.fileId);
+        } else {
+          // No file ID in store, fetch from API
+          const sessionData = await fetchSessionData();
+          if (sessionData) {
+            console.log("Session fetched successfully:", sessionData);
+            await analyzeFileContent(sessionData.fileid);
+          }
+        }
+
+        // Clear the stored session data after using it
+        useSessionStore.getState().clearSessionData();
+      } else {
+        // Fetch session data from API
+        const sessionData = await fetchSessionData();
+        if (sessionData) {
+          console.log("Session fetched successfully:", sessionData);
+          setIsLoading(false);
+          await analyzeFileContent(sessionData.fileid);
+        }
       }
     };
 
@@ -421,7 +479,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         className="pointer-events-none fixed inset-0 -z-10"
       >
         <div className="absolute right-[8%] top-[8%] h-130 w-130 rounded-full bg-amber-500/15 blur-3xl" />
-        <div className="absolute bottom-[8%] left-[4%] h-[420px] w-[420px] rounded-full bg-orange-600/6 blur-[110px]" />
+        <div className="absolute bottom-[8%] left-[4%] h-105 w-105 rounded-full bg-orange-600/6 blur-[110px]" />
       </div>
 
       {/* Header */}
@@ -553,11 +611,17 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             ref={index === currentWordIndex ? currentWordRef : null}
                             className={`transition-all duration-200 ${
                               index === currentWordIndex
-                                ? "text-amber-400 scale-110"
+                                ? "scale-110"
                                 : index < currentWordIndex
                                   ? "text-zinc-500"
                                   : "text-white/60"
                             }`}
+                            style={{
+                              color:
+                                index === currentWordIndex
+                                  ? getRgbAsHex(profile?.highlight_color)
+                                  : undefined,
+                            }}
                           >
                             {word}
                           </span>
@@ -566,7 +630,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                     ) : (
                       // Dot mode (default) — RSVP single word box
                       <div className="relative flex items-center justify-center min-h-32">
-                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.07]">
+                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/3 border border-white/[0.07]">
                           {(() => {
                             const word = words[currentWordIndex] ?? "";
                             const orp = Math.floor(word.length / 2);
@@ -576,7 +640,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             return (
                               <span className="flex items-baseline font-mono text-4xl font-bold tracking-wide">
                                 <span className="text-zinc-300">{before}</span>
-                                <span className="text-amber-400">
+                                <span style={{ color: getRgbAsHex(profile?.highlight_color) }}>
                                   {highlight}
                                 </span>
                                 <span className="text-zinc-300">{after}</span>
@@ -633,25 +697,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                         >
                           Next →
                         </button>
-                      </div>
-
-                      {/* WPM Adjustment */}
-                      <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-                        <label htmlFor="wpm" className="text-sm text-zinc-400">
-                          Speed:
-                        </label>
-                        <input
-                          id="wpm"
-                          type="range"
-                          min="100"
-                          max="500"
-                          value={wpm}
-                          onChange={(e) => setWpm(Number(e.target.value))}
-                          className="w-20 cursor-pointer"
-                        />
-                        <span className="min-w-12 text-right text-sm font-semibold text-amber-300">
-                          {wpm}
-                        </span>
                       </div>
                     </div>
                   </div>
