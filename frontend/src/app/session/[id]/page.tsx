@@ -739,38 +739,50 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       {/* Main Reading Area */}
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
         {showQuiz ? (
-          <div className="rounded-3xl border border-white/8 bg-white px-6 py-6 text-zinc-900 shadow-2xl shadow-black/30 sm:px-8">
-            {quizScore === null ? (
-              <>
-                <QuizScreen
-                  chunkTitle="Reading session"
-                  wpm={achievedWpm ?? wpm}
-                  questions={quizQuestions}
-                  onSubmit={submitComprehensionCheck}
-                />
-                {quizSubmitting ? (
-                  <p className="mt-3 text-sm text-gray-500">
-                    Saving comprehension check...
+          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[rgba(13,13,18,0.9)] px-5 py-6 shadow-2xl shadow-black/30 sm:px-8">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-amber-500/15 blur-3xl"
+            />
+            <div className="relative">
+              {quizScore === null ? (
+                <>
+                  <QuizScreen
+                    chunkTitle="Reading session"
+                    wpm={achievedWpm ?? wpm}
+                    questions={quizQuestions}
+                    onSubmit={submitComprehensionCheck}
+                  />
+                  {quizSubmitting ? (
+                    <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-zinc-400">
+                      Saving comprehension check...
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="mx-auto max-w-md py-8 text-center">
+                  <span className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
+                    Retention
+                  </span>
+                  <h2 className="mt-2 text-2xl font-bold text-white">
+                    Comprehension saved
+                  </h2>
+                  <p className="mt-4 text-4xl font-extrabold text-amber-300">
+                    Score: {quizScore}%
                   </p>
-                ) : null}
-              </>
-            ) : (
-              <div className="text-center">
-                <h2 className="text-2xl font-bold text-gray-950">
-                  Comprehension saved
-                </h2>
-                <p className="mt-3 text-lg font-semibold text-blue-700">
-                  Score: {quizScore}%
-                </p>
-                <button
-                  type="button"
-                  onClick={handleExitSession}
-                  className="mt-6 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
-                >
-                  Back to Dashboard
-                </button>
-              </div>
-            )}
+                  <p className="mt-3 text-sm leading-6 text-zinc-400">
+                    Your quiz result has been added to your progress analytics.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleExitSession}
+                    className="mt-6 h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 

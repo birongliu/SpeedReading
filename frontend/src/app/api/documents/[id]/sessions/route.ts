@@ -9,6 +9,13 @@ type PostSessionParams = {
   }>;
 };
 
+type PostSessionBody = {
+  targetWpm?: number;
+};
+
+const clampWpm = (value: number) =>
+  Math.min(1000, Math.max(100, Math.round(value)));
+
 export async function POST(req: NextRequest, { params }: PostSessionParams) {
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -17,6 +24,7 @@ export async function POST(req: NextRequest, { params }: PostSessionParams) {
 
   const token = authHeader.split(" ")[1];
   const { id: documentId } = await params;
+  const body = (await req.json().catch(() => ({}))) as PostSessionBody;
 
   const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").replace(
     /\/$/,
@@ -41,43 +49,68 @@ export async function POST(req: NextRequest, { params }: PostSessionParams) {
     }
 
 
-    // Find existing reading session for this document
-    const { data: existingSession, error: sessionError } = await supabase
-      .from("reading_sessions")
-      .select("id, created_at, completed, target_wpm")
+    const { data: document, error: documentError } = await supabase
+      .from("documents")
+      .select("id")
+      .eq("id", documentId)
       .eq("user_id", user.id)
-      .eq("document_id", documentId)
-      .order("created_at", { ascending: false })
-      .limit(1)
       .single();
 
-      console.log("Existing session query result:", { existingSession, sessionError });
+    if (documentError || !document) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 },
+      );
+    }
 
-    if (sessionError && sessionError.code !== "PGRST116") {
+    let targetWpm = 250;
+    const { data: profileData, error: profileError } = await supabase
+      .from("users")
+      .select("default_wpm")
+      .eq("id", user.id)
+      .single();
+
+    if (!profileError && typeof profileData?.default_wpm === "number") {
+      targetWpm = profileData.default_wpm;
+    }
+
+    if (typeof body.targetWpm === "number" && Number.isFinite(body.targetWpm)) {
+      targetWpm = clampWpm(body.targetWpm);
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("reading_sessions")
+      .insert({
+        user_id: user.id,
+        document_id: documentId,
+        target_wpm: targetWpm,
+        words_read: 0,
+        duration_seconds: 0,
+        completed: false,
+        start_page: 1,
+        end_page: 1,
+      })
+      .select("id, document_id, target_wpm, created_at, completed")
+      .single();
+
+    if (sessionError || !sessionData) {
       return NextResponse.json(
         {
-          error: sessionError?.message ?? "Failed to fetch reading session",
+          error: sessionError?.message ?? "Failed to create reading session",
         },
         { status: 400 },
       );
     }
 
-    if (!existingSession) {
-      return NextResponse.json(
-        { error: "No reading session found for this document" },
-        { status: 404 },
-      );
-    }
-
     return NextResponse.json(
       {
-        sessionId: existingSession.id,
-        fileId: documentId,
-        targetWpm: existingSession.target_wpm,
-        created_at: existingSession.created_at,
-        completed: existingSession.completed,
+        sessionId: sessionData.id,
+        fileId: sessionData.document_id,
+        targetWpm: sessionData.target_wpm,
+        created_at: sessionData.created_at,
+        completed: sessionData.completed,
       },
-      { status: 200 },
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error creating session:", error);
