@@ -175,9 +175,9 @@ export default function Home() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-0 -z-10"
           >
-            <div className="absolute top-[15%] right-[10%] w-175 h-175 rounded-full bg-amber-600/[0.07] blur-[140px] animate-float" />
-            <div className="absolute bottom-[10%] left-[5%]  w-125 h-125 rounded-full bg-orange-600/6 blur-[110px] animate-float-b" />
-            <div className="absolute top-[50%] left-[40%]  w-75 h-75 rounded-full bg-rose-600/4 blur-[90px]" />
+            <div className="absolute top-[15%] right-[10%] w-[700px] h-[700px] rounded-full bg-amber-600/[0.07] blur-[140px] animate-float" />
+            <div className="absolute bottom-[10%] left-[5%]  w-[500px] h-[500px] rounded-full bg-orange-600/6 blur-[110px] animate-float-b" />
+            <div className="absolute top-[50%] left-[40%]  w-[300px] h-[300px] rounded-full bg-rose-600/4 blur-[90px]" />
           </div>
 
           {/* Dot-grid overlay */}
