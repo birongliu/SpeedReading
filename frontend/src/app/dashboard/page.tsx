@@ -1163,7 +1163,7 @@ export default function DashboardPage() {
                   </p>
                   <p className="text-xs font-semibold text-amber-300">saved</p>
                 </div>
-                <div className="rounded-xl border border-white/6 bg-black/20 p-4">
+                <div className="min-w-0 rounded-xl border border-white/6 bg-black/20 p-4">
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-zinc-500">Highlight color</p>
                     <button
@@ -1186,7 +1186,7 @@ export default function DashboardPage() {
                       </svg>
                     </button>
                   </div>
-                  <p className="mt-2 text-xl font-bold text-white wrap-break-words">
+                  <p className="mt-2 break-words text-xl font-bold text-white">
                     {getRgbColorName(profile?.highlight_color)}
                   </p>
                   <p className="text-xs font-semibold text-amber-300">saved</p>
@@ -1834,17 +1834,17 @@ export default function DashboardPage() {
                     <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                       Previous
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div
-                        className="h-12 w-12 rounded-lg border border-white/20 shadow-md"
+                        className="h-12 w-12 shrink-0 rounded-lg border border-white/20 shadow-md"
                         style={{
                           backgroundColor: getColorHex(
                             profile?.highlight_color,
                           ),
                         }}
                       />
-                      <div className="flex flex-col">
-                        <p className="font-mono text-sm font-bold text-zinc-300">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="max-w-full break-all font-mono text-sm font-bold text-zinc-300">
                           {getColorHex(profile?.highlight_color).toUpperCase()}
                         </p>
                         <p className="text-xs text-zinc-500">Current</p>
@@ -1855,16 +1855,16 @@ export default function DashboardPage() {
                     <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
                       New
                     </p>
-                    <div className="flex items-center gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <input
                         type="color"
                         value={highlightColorInput}
                         onChange={(e) => setHighlightColorInput(e.target.value)}
-                        className="h-12 w-12 cursor-pointer rounded-lg border border-white/20 shadow-md"
+                        className="h-12 w-12 shrink-0 cursor-pointer rounded-lg border border-white/20 shadow-md"
                         aria-label="Select highlight color"
                       />
-                      <div className="flex flex-col">
-                        <p className="font-mono text-sm font-bold text-white">
+                      <div className="flex min-w-0 flex-col">
+                        <p className="max-w-full break-all font-mono text-sm font-bold text-white">
                           {highlightColorInput.toUpperCase()}
                         </p>
                         <p className="text-xs text-zinc-500">Selected</p>
