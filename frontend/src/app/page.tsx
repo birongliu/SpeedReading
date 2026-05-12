@@ -316,7 +316,7 @@ export default function Home() {
               {/* Connector line */}
               <div
                 aria-hidden="true"
-                className="absolute left-5.75 top-14x bg-gbg-linear-to-bm-amber-500/60 via-amber-500/15 to-transparent"
+                className="absolute left-5.75 top-14 w-px bg-linear-to-b from-amber-500/60 via-amber-500/15 to-transparent"
                 style={{ height: 'calc(100% - 80px)' }}
               />
 
