@@ -353,26 +353,44 @@ export function rgbObjectToColorName(rgb: RGBColor): string {
 }
 
 /**
- * Converts a hex color string to a human-readable color name
+ * Normalizes a hex color string to a 6-character lowercase hex value.
+ * Returns null when the input is not a valid 3- or 6-digit hex color.
  * @param hex - Hex color string (with or without #)
- * @returns The name of the closest matching color
+ * @returns Normalized 6-character hex string, or null when invalid
  */
-export function hexToColorName(hex: string): string {
-  // Remove # if present
-  hex = hex.replace("#", "").toLowerCase();
+function normalizeHexColor(hex: string): string | null {
+  const normalizedHex = hex.replace(/^#/, "").toLowerCase();
 
-  // Expand shorthand hex to full hex
-  if (hex.length === 3) {
-    hex = hex
+  if (!/^[0-9a-f]{3}$|^[0-9a-f]{6}$/.test(normalizedHex)) {
+    return null;
+  }
+
+  if (normalizedHex.length === 3) {
+    return normalizedHex
       .split("")
       .map((char) => char + char)
       .join("");
   }
 
+  return normalizedHex;
+}
+
+/**
+ * Converts a hex color string to a human-readable color name
+ * @param hex - Hex color string (with or without #)
+ * @returns The name of the closest matching color
+ */
+export function hexToColorName(hex: string): string {
+  const normalizedHex = normalizeHexColor(hex);
+
+  if (normalizedHex === null) {
+    return "Unknown";
+  }
+
   // Convert hex to RGB
-  const r = parseInt(hex.substring(0, 2), 16);
-  const g = parseInt(hex.substring(2, 4), 16);
-  const b = parseInt(hex.substring(4, 6), 16);
+  const r = parseInt(normalizedHex.substring(0, 2), 16);
+  const g = parseInt(normalizedHex.substring(2, 4), 16);
+  const b = parseInt(normalizedHex.substring(4, 6), 16);
 
   return rgbToColorName(r, g, b);
 }
