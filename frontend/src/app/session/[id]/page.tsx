@@ -387,7 +387,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
 
     resolver();
-  }, [sessionId, status, session?.access_token, router]);
+  }, [sessionId, status, session?.access_token, profile?.default_wpm, profile?.highlight_color, router]);
 
   const submitComprehensionCheck = async (answers: (number | null)[]) => {
     if (!session?.access_token) {

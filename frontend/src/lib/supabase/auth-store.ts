@@ -102,6 +102,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ? { ...profile, focus_mode: mode }
         : {
             default_wpm: 250,
+            highlight_color: '#FF0000',
             display_name: null,
             email: user.email ?? null,
             focus_mode: FocusMode.DOT,
@@ -139,6 +140,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ? { ...profile, default_wpm: wpm }
         : {
             default_wpm: wpm,
+            highlight_color: '#FF0000',
             display_name: null,
             email: user.email ?? null,
             focus_mode: FocusMode.DOT,
@@ -173,6 +175,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ? { ...profile, display_name: displayName }
         : {
             default_wpm: 250,
+            highlight_color: '#FF0000',
             display_name: displayName,
             email: user.email ?? null,
             focus_mode: FocusMode.DOT,
