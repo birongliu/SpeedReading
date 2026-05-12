@@ -476,8 +476,8 @@ export function hexToRgb(hex: string): RGBColor {
  */
 export function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (n: number) => {
-    const hex = Math.round(n).toString(16);
-    return hex.length === 1 ? "0" + hex : hex;
+    const clamped = Math.min(255, Math.max(0, Math.round(n)));
+    return clamped.toString(16).padStart(2, "0");
   };
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
 }
