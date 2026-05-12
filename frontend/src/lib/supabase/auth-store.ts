@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import type { Session, User } from '@supabase/supabase-js';
-import { create } from 'zustand';
-import { createSupabaseBrowserClient } from './client';
-import { getUserProfile, type UserProfile, FocusMode } from './users';
+import type { Session, User } from "@supabase/supabase-js";
+import { create } from "zustand";
+import { createSupabaseBrowserClient } from "./client";
+import { getUserProfile, type UserProfile, FocusMode } from "./users";
 
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+export type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 
 type AuthState = {
   authError: string;
@@ -19,6 +19,7 @@ type AuthState = {
   updateDefaultWpm: (wpm: number) => Promise<void>;
   updateFocusMode: (mode: FocusMode) => Promise<void>;
   updateDisplayName: (displayName: string) => Promise<void>;
+  updateHighlightColor: (color: string) => Promise<void>;
 };
 
 let initialized = false;
@@ -30,12 +31,12 @@ const applySession = async (session: Session | null) => {
   const currentProfile = useAuthStore.getState().profile;
 
   useAuthStore.setState({
-    authError: '',
+    authError: "",
     profile: user && currentProfile?.id === user.id ? currentProfile : null,
-    profileError: '',
+    profileError: "",
     profileLoading: Boolean(user),
     session,
-    status: user ? 'authenticated' : 'unauthenticated',
+    status: user ? "authenticated" : "unauthenticated",
     user,
   });
 
@@ -52,7 +53,7 @@ const applySession = async (session: Session | null) => {
 
     useAuthStore.setState({
       profile,
-      profileError: '',
+      profileError: "",
       profileLoading: false,
     });
   } catch (error) {
@@ -63,37 +64,37 @@ const applySession = async (session: Session | null) => {
       profileError:
         error instanceof Error
           ? error.message
-          : 'Unable to load your profile right now.',
+          : "Unable to load your profile right now.",
       profileLoading: false,
     });
   }
 };
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  authError: '',
+  authError: "",
   profile: null,
-  profileError: '',
+  profileError: "",
   profileLoading: false,
   session: null,
   updateFocusMode: async (mode) => {
     const { profile, session, user } = get();
-    
+
     if (!user || !session) {
-      throw new Error('You need to be logged in to update your profile.');
+      throw new Error("You need to be logged in to update your profile.");
     }
 
-    const res = await fetch('/api/profile', {
-      method: 'PATCH',
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ focusMode: mode }),
     });
-    
+
     if (!res.ok) {
       const data = (await res.json()) as { error?: string };
-      throw new Error(data.error ?? 'Failed to update focus mode.');
+      throw new Error(data.error ?? "Failed to update focus mode.");
     }
 
     set({
@@ -110,20 +111,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       profileError: "",
     });
   },
-  status: 'loading',
+  status: "loading",
   user: null,
   setAuthError: (authError) => set({ authError }),
   updateDefaultWpm: async (wpm) => {
     const { profile, session, user } = get();
 
     if (!user || !session) {
-      throw new Error('You need to be logged in to update your profile.');
+      throw new Error("You need to be logged in to update your profile.");
     }
 
-    const res = await fetch('/api/profile', {
-      method: 'PATCH',
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ wpm }),
@@ -131,7 +132,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (!res.ok) {
       const data = (await res.json()) as { error?: string };
-      throw new Error(data.error ?? 'Failed to update reading pace.');
+      throw new Error(data.error ?? "Failed to update reading pace.");
     }
 
     set({
@@ -145,20 +146,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             highlight_color: null,
             id: user.id,
           },
-      profileError: '',
+      profileError: "",
     });
   },
   updateDisplayName: async (displayName) => {
     const { profile, session, user } = get();
 
     if (!user || !session) {
-      throw new Error('You need to be logged in to update your profile.');
+      throw new Error("You need to be logged in to update your profile.");
     }
 
-    const res = await fetch('/api/profile', {
-      method: 'PATCH',
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ displayName }),
@@ -166,7 +167,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     if (!res.ok) {
       const data = (await res.json()) as { error?: string };
-      throw new Error(data.error ?? 'Failed to update display name.');
+      throw new Error(data.error ?? "Failed to update display name.");
     }
 
     set({
@@ -180,7 +181,42 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             highlight_color: null,
             id: user.id,
           },
-      profileError: '',
+      profileError: "",
+    });
+  },
+  updateHighlightColor: async (color) => {
+    const { profile, session, user } = get();
+
+    if (!user || !session) {
+      throw new Error("You need to be logged in to update your profile.");
+    }
+
+    const res = await fetch("/api/profile", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ highlightColor: color }),
+    });
+
+    if (!res.ok) {
+      const data = (await res.json()) as { error?: string };
+      throw new Error(data.error ?? "Failed to update highlight color.");
+    }
+
+    set({
+      profile: profile
+        ? { ...profile, highlight_color: color }
+        : {
+            default_wpm: 250,
+            display_name: null,
+            email: user.email ?? null,
+            focus_mode: FocusMode.DOT,
+            highlight_color: color,
+            id: user.id,
+          },
+      profileError: "",
     });
   },
 }));
@@ -200,7 +236,7 @@ export function initializeAuthState() {
           profile: null,
           profileLoading: false,
           session: null,
-          status: 'unauthenticated',
+          status: "unauthenticated",
           user: null,
         });
         return;
@@ -218,11 +254,11 @@ export function initializeAuthState() {
         authError:
           error instanceof Error
             ? error.message
-            : 'Unable to check authentication state.',
+            : "Unable to check authentication state.",
         profile: null,
         profileLoading: false,
         session: null,
-        status: 'unauthenticated',
+        status: "unauthenticated",
         user: null,
       });
     });

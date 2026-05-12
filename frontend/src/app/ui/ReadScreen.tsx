@@ -146,7 +146,7 @@ export function ReadScreen({
             onChange={(e) => handleWpmChange(parseInt(e.target.value))}
             className="w-28"
           />
-          <span className="text-sm font-medium text-gray-900 min-w-[64px]">
+          <span className="text-sm font-medium text-gray-900 min-w-16">
             {wpm} wpm
           </span>
         </div>

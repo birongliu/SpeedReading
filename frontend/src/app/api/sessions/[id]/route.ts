@@ -53,14 +53,11 @@ export async function GET(req: NextRequest, { params }: GetSessionParams) {
     }
 
     return NextResponse.json({
-      session: {
-        id: session.id,
-        user_id: session.user_id,
-        file_id: session.document_id,
-        target_wpm: session.target_wpm,
-        created_at: session.created_at,
-        completed: session.completed,
-      },
+      sessionId: session.id,
+      fileId: session.document_id,
+      targetWpm: session.target_wpm,
+      created_at: session.created_at,
+      completed: session.completed,
     });
   } catch (error) {
     console.error("Error fetching session:", error);
@@ -140,10 +137,7 @@ export async function PATCH(req: NextRequest, { params }: GetSessionParams) {
     }
 
     if (durationSeconds !== null) {
-      updatePayload.duration_seconds = Math.max(
-        0,
-        Math.floor(durationSeconds),
-      );
+      updatePayload.duration_seconds = Math.max(0, Math.floor(durationSeconds));
     }
 
     if (Object.keys(updatePayload).length === 0) {

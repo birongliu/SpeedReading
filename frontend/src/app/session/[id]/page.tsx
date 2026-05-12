@@ -6,13 +6,40 @@ import { useCallback, useEffect, useMemo, useRef, useState, use } from "react";
 import { useAuthSession } from "@/lib/supabase/use-auth-session";
 import { showToast } from "@/lib/toast-store";
 import { useUploadStore } from "@/lib/store/upload-store";
+import { useSessionStore } from "@/lib/store/session-store";
 import { QuizScreen } from "@/app/ui/QuizScreen";
+import { rgbToHex } from "@/lib/color-utils";
 import type { Question } from "@/lib/types";
 
 type SessionPageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+const DEFAULT_HIGHLIGHT_COLOR = "#FBBF24";
+const LEGACY_HIGHLIGHT_COLOR_MAP: Record<string, string> = {
+  amber: "#FBBF24",
+};
+
+// Helper function to convert saved color formats to hex for styling
+const getRgbAsHex = (rgbString?: string | null): string => {
+  if (!rgbString) return DEFAULT_HIGHLIGHT_COLOR;
+
+  const normalizedColor = rgbString.trim();
+
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalizedColor)) {
+    return normalizedColor.toUpperCase();
+  }
+
+  const legacyHex = LEGACY_HIGHLIGHT_COLOR_MAP[normalizedColor.toLowerCase()];
+  if (legacyHex) return legacyHex;
+
+  const match = normalizedColor.match(/\d+/g);
+  if (!match || match.length < 3) return DEFAULT_HIGHLIGHT_COLOR;
+
+  const [r, g, b] = match.slice(0, 3).map(Number);
+  return rgbToHex(r, g, b);
 };
 
 function calculateLiveActualWpm({
@@ -66,7 +93,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const sessionEndedRef = useRef(false);
   const currentWordRef = useRef<HTMLSpanElement | null>(null);
-  const highlightScrollRef = useRef<HTMLDivElement | null>(null);
   const startedAtRef = useRef<number | null>(null);
   const accumulatedMsRef = useRef(0);
   const playbackFrameRef = useRef<number | null>(null);
@@ -75,8 +101,6 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const playbackAnchorIndexRef = useRef(0);
   const currentWordIndexRef = useRef(0);
 
-  const targetWpm = wpm;
-  const wordDelayMs = 60000 / targetWpm;
   const wordsRead = words.length
     ? Math.min(currentWordIndex + 1, words.length)
     : 0;
@@ -85,12 +109,12 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       calculateLiveActualWpm({
         wordsRead,
         elapsedMs,
-        targetWpm,
+        targetWpm: wpm,
       }),
-    [elapsedMs, targetWpm, wordsRead],
+    [elapsedMs, wordsRead, wpm],
   );
+  const achievedWpm = actualWpm || null;
   const isComplete = words.length > 0 && currentWordIndex === words.length - 1;
-
   const formattedDuration = useMemo(
     () => formatElapsedTime(elapsedMs),
     [elapsedMs],
@@ -156,37 +180,26 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     [getActiveElapsedMs, isPaused, words.length],
   );
 
-  const handleWpmChange = useCallback(
-    (nextWpm: number) => {
-      if (!isPaused && words.length && !isComplete) {
-        const now = performance.now();
-        const activeElapsedMs = getActiveElapsedMs();
-
-        accumulatedMsRef.current = activeElapsedMs;
-        startedAtRef.current = now;
-        playbackStartedAtRef.current = now;
-        playbackAnchorIndexRef.current = currentWordIndexRef.current;
-        lastElapsedUpdateRef.current = activeElapsedMs;
-        setElapsedMs(activeElapsedMs);
-      }
-
-      setWpm(nextWpm);
-    },
-    [getActiveElapsedMs, isComplete, isPaused, words.length],
-  );
-
   const finishReadingSession = useCallback(
     async (completed: boolean, finalElapsedMs = getActiveElapsedMs()) => {
-      if (!session?.access_token || !words.length || sessionEndedRef.current) {
+      if (!words.length || sessionEndedRef.current) {
+        return;
+      }
+
+      // Skip API call for sample readings
+      if (sessionId.startsWith("sample-")) {
+        sessionEndedRef.current = true;
+        return;
+      }
+
+      if (!session?.access_token) {
         return;
       }
 
       const finalWordsRead = completed ? words.length : wordsRead;
-      const finalWpm = calculateFinalWpm(finalWordsRead, finalElapsedMs);
-
       const payload = {
         words_read: finalWordsRead,
-        achieved_wpm: finalWpm,
+        achieved_wpm: calculateFinalWpm(finalWordsRead, finalElapsedMs),
         duration_seconds: Math.round(finalElapsedMs / 1000),
         completed,
       };
@@ -233,16 +246,32 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   }, [finishReadingSession, isComplete, router]);
 
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.replace("/login");
-      return;
-    }
+    // Sample readings don't require authentication
+    const isSampleSession = sessionId.startsWith("sample-");
 
-    if (status !== "authenticated" || !session?.access_token) {
-      return;
+    if (!isSampleSession) {
+      // Only require authentication for non-sample sessions
+      if (status === "unauthenticated") {
+        router.replace("/login");
+        return;
+      }
+
+      if (status !== "authenticated" || !session?.access_token) {
+        return;
+      }
     }
 
     const fetchSessionData = async () => {
+      if (!session?.access_token) {
+        setError("Authentication required for this session");
+        showToast({
+          message: "Authentication required",
+          variant: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch(`/api/sessions/${sessionId}`, {
           headers: {
@@ -263,11 +292,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
         const data = await response.json();
         console.log("Session Data:", data);
-        if (typeof data.session?.target_wpm === "number") {
-          setWpm(data.session.target_wpm);
+        if (typeof data.targetWpm === "number") {
+          setWpm(data.targetWpm);
         }
-        setIsLoading(false);
-        return { sessionId: data.session.id, fileid: data.session.file_id };
+        return { sessionId: data.sessionId, fileid: data.fileId };
       } catch (err) {
         console.error("Error:", err);
         setError(err instanceof Error ? err.message : "Failed to load session");
@@ -280,6 +308,16 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     };
 
     const analyzeFileContent = async (fileId: string) => {
+      if (!session?.access_token) {
+        setError("Authentication required for this session");
+        showToast({
+          message: "Authentication required",
+          variant: "error",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const response = await fetch("/api/ai", {
           method: "POST",
@@ -341,6 +379,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         }
         setWords(allWords);
         setQuizQuestions(allQuestions);
+        setIsLoading(false);
       } catch (err) {
         console.error("AI Analysis Error:", err);
         setError(err instanceof Error ? err.message : "AI analysis failed");
@@ -348,14 +387,76 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
           message: "Failed to analyze file content",
           variant: "error",
         });
+        setIsLoading(false);
       }
     };
 
     const resolver = async () => {
-      const sessionData = await fetchSessionData();
-      if (sessionData) {
-        console.log("Session fetched successfully:", sessionData);
-        await analyzeFileContent(sessionData.fileid);
+      // Check if this is a sample reading first
+      if (sessionId.startsWith("sample-")) {
+        // For sample sessions, always use the session store
+        const storedSessionData = useSessionStore.getState().sessionData;
+
+        if (storedSessionData && storedSessionData.sessionId === sessionId) {
+          console.log(
+            "Using stored session data for sample:",
+            storedSessionData,
+          );
+
+          if (storedSessionData.targetWpm) {
+            setWpm(storedSessionData.targetWpm);
+          }
+
+          setWords(storedSessionData.words || []);
+          setQuizQuestions(storedSessionData.quizQuestions || []);
+          setIsLoading(false);
+          useSessionStore.getState().clearSessionData();
+        } else {
+          // Sample session data not found in store - shouldn't happen
+          setError("Sample reading data not found. Please try again.");
+          showToast({
+            message: "Sample reading data not found",
+            variant: "error",
+          });
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // For regular sessions, check stored data first
+      const storedSessionData = useSessionStore.getState().sessionData;
+
+      if (storedSessionData && storedSessionData.sessionId === sessionId) {
+        // Use stored session data
+        console.log("Using stored session data:", storedSessionData);
+
+        // Set wpm from stored target WPM
+        if (storedSessionData.targetWpm) {
+          setWpm(storedSessionData.targetWpm);
+        }
+
+        if (storedSessionData.fileId) {
+          // Analyze file content
+          await analyzeFileContent(storedSessionData.fileId);
+        } else {
+          // No file ID in store, fetch from API
+          const sessionData = await fetchSessionData();
+          if (sessionData) {
+            console.log("Session fetched successfully:", sessionData);
+            await analyzeFileContent(sessionData.fileid);
+          }
+        }
+
+        // Clear the stored session data after using it
+        useSessionStore.getState().clearSessionData();
+      } else {
+        // Fetch session data from API
+        const sessionData = await fetchSessionData();
+        if (sessionData) {
+          console.log("Session fetched successfully:", sessionData);
+          setIsLoading(false);
+          await analyzeFileContent(sessionData.fileid);
+        }
       }
     };
 
@@ -440,19 +541,9 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
   useEffect(() => {
     if (profile?.focus_mode !== "highlight") return;
-    const container = highlightScrollRef.current;
-    const currentWord = currentWordRef.current;
-
-    if (!container || !currentWord) return;
-
-    const nextScrollTop =
-      currentWord.offsetTop -
-      container.clientHeight / 2 +
-      currentWord.clientHeight / 2;
-
-    container.scrollTo({
+    currentWordRef.current?.scrollIntoView({
       behavior: "smooth",
-      top: Math.max(0, nextScrollTop),
+      block: "center",
     });
   }, [currentWordIndex, profile?.focus_mode]);
 
@@ -464,6 +555,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
 
     if (isPaused || !words.length || sessionEndedRef.current) return;
 
+    const wordDelayMs = 60000 / wpm;
     const startedAt = performance.now();
 
     if (startedAtRef.current === null) {
@@ -478,8 +570,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
     const updatePlayback = () => {
       const now = performance.now();
       const activeElapsedMs = getActiveElapsedMs();
-      const playbackElapsedMs =
-        now - (playbackStartedAtRef.current ?? now);
+      const playbackElapsedMs = now - (playbackStartedAtRef.current ?? now);
       const expectedIndex =
         playbackAnchorIndexRef.current +
         Math.floor(playbackElapsedMs / wordDelayMs);
@@ -522,7 +613,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         playbackFrameRef.current = null;
       }
     };
-  }, [getActiveElapsedMs, isPaused, wordDelayMs, words.length]);
+  }, [getActiveElapsedMs, isPaused, wpm, words.length]);
 
   useEffect(() => {
     if (!isComplete || !isPaused || sessionEndedRef.current) return;
@@ -612,7 +703,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
         className="pointer-events-none fixed inset-0 -z-10"
       >
         <div className="absolute right-[8%] top-[8%] h-130 w-130 rounded-full bg-amber-500/15 blur-3xl" />
-        <div className="absolute bottom-[8%] left-[4%] h-[420px] w-[420px] rounded-full bg-orange-600/6 blur-[110px]" />
+        <div className="absolute bottom-[8%] left-[4%] h-105 w-105 rounded-full bg-orange-600/6 blur-[110px]" />
       </div>
 
       {/* Header */}
@@ -648,50 +739,38 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
       {/* Main Reading Area */}
       <main className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
         {showQuiz ? (
-          <div className="relative overflow-hidden rounded-3xl border border-white/8 bg-[rgba(13,13,18,0.9)] px-5 py-6 shadow-2xl shadow-black/30 sm:px-8">
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute -right-20 -top-28 h-72 w-72 rounded-full bg-amber-500/15 blur-3xl"
-            />
-            <div className="relative">
-              {quizScore === null ? (
-                <>
-                  <QuizScreen
-                    chunkTitle="Reading session"
-                    wpm={actualWpm || targetWpm}
-                    questions={quizQuestions}
-                    onSubmit={submitComprehensionCheck}
-                  />
-                  {quizSubmitting ? (
-                    <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-zinc-400">
-                      Saving comprehension check...
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <div className="mx-auto max-w-md py-8 text-center">
-                  <span className="text-[11px] font-semibold uppercase tracking-widest text-amber-400">
-                    Retention
-                  </span>
-                  <h2 className="mt-2 text-2xl font-bold text-white">
-                    Comprehension saved
-                  </h2>
-                  <p className="mt-4 text-4xl font-extrabold text-amber-300">
-                    Score: {quizScore}%
+          <div className="rounded-3xl border border-white/8 bg-white px-6 py-6 text-zinc-900 shadow-2xl shadow-black/30 sm:px-8">
+            {quizScore === null ? (
+              <>
+                <QuizScreen
+                  chunkTitle="Reading session"
+                  wpm={achievedWpm ?? wpm}
+                  questions={quizQuestions}
+                  onSubmit={submitComprehensionCheck}
+                />
+                {quizSubmitting ? (
+                  <p className="mt-3 text-sm text-gray-500">
+                    Saving comprehension check...
                   </p>
-                  <p className="mt-3 text-sm leading-6 text-zinc-400">
-                    Your quiz result has been added to your progress analytics.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleExitSession}
-                    className="mt-6 h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 px-6 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#09090b]"
-                  >
-                    Back to Dashboard
-                  </button>
-                </div>
-              )}
-            </div>
+                ) : null}
+              </>
+            ) : (
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-gray-950">
+                  Comprehension saved
+                </h2>
+                <p className="mt-3 text-lg font-semibold text-blue-700">
+                  Score: {quizScore}%
+                </p>
+                <button
+                  type="button"
+                  onClick={handleExitSession}
+                  className="mt-6 rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700"
+                >
+                  Back to Dashboard
+                </button>
+              </div>
+            )}
           </div>
         ) : null}
 
@@ -708,7 +787,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                   Target WPM
                 </p>
                 <p className="mt-2 text-xl font-bold text-amber-300">
-                  {targetWpm} WPM
+                  {wpm} WPM
                 </p>
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
@@ -721,10 +800,10 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
                 <p className="text-xs text-zinc-500 uppercase tracking-wider">
-                  Actual WPM
+                  Actual Pace
                 </p>
                 <p className="mt-2 text-xl font-bold text-white">
-                  {actualWpm ? `${actualWpm} WPM` : "Calculating"}
+                  {achievedWpm ? `${achievedWpm} WPM` : "Calculating"}
                 </p>
               </div>
               <div className="rounded-xl border border-white/[0.07] bg-[rgba(13,13,18,0.86)] p-4">
@@ -749,36 +828,35 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                   <div className="relative mb-12 min-h-32">
                     {profile?.focus_mode === "highlight" ? (
                       // Highlight mode — full passage
-                      <div
-                        ref={highlightScrollRef}
-                        className="max-h-[42vh] min-h-64 overflow-y-auto rounded-2xl border border-white/[0.07] bg-white/[0.03] px-4 py-5 sm:max-h-[46vh] sm:px-6"
-                      >
-                        <div className="text-left text-2xl font-bold leading-loose sm:text-3xl">
-                          {words.map((word, index) => (
-                            <span
-                              key={index}
-                              ref={
+                      <div className="flex flex-wrap gap-2 text-center text-3xl font-bold leading-relaxed sm:text-4xl">
+                        {words.map((word, index) => (
+                          <span
+                            key={index}
+                            ref={
+                              index === currentWordIndex ? currentWordRef : null
+                            }
+                            className={`transition-all duration-200 ${
+                              index === currentWordIndex
+                                ? "scale-110"
+                                : index < currentWordIndex
+                                  ? "text-zinc-500"
+                                  : "text-white/60"
+                            }`}
+                            style={{
+                              color:
                                 index === currentWordIndex
-                                  ? currentWordRef
-                                  : null
-                              }
-                              className={`mr-2 inline-block transition-all duration-200 ${
-                                index === currentWordIndex
-                                  ? "scale-110 text-amber-400"
-                                  : index < currentWordIndex
-                                    ? "text-zinc-500"
-                                    : "text-white/60"
-                              }`}
-                            >
-                              {word}
-                            </span>
-                          ))}
-                        </div>
+                                  ? getRgbAsHex(profile?.highlight_color)
+                                  : undefined,
+                            }}
+                          >
+                            {word}
+                          </span>
+                        ))}
                       </div>
                     ) : (
                       // Dot mode (default) — RSVP single word box
                       <div className="relative flex items-center justify-center min-h-32">
-                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/[0.03] border border-white/[0.07]">
+                        <div className="relative w-auto px-8 h-20 flex items-center justify-center rounded-xl bg-white/3 border border-white/[0.07]">
                           {(() => {
                             const word = words[currentWordIndex] ?? "";
                             const orp = Math.floor(word.length / 2);
@@ -788,7 +866,13 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                             return (
                               <span className="flex items-baseline font-mono text-4xl font-bold tracking-wide">
                                 <span className="text-zinc-300">{before}</span>
-                                <span className="text-amber-400">
+                                <span
+                                  style={{
+                                    color: getRgbAsHex(
+                                      profile?.highlight_color,
+                                    ),
+                                  }}
+                                >
                                   {highlight}
                                 </span>
                                 <span className="text-zinc-300">{after}</span>
@@ -826,42 +910,17 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                           {isPaused ? "Resume" : "Pause"}
                         </button>
                         <button
-                          onClick={() =>
-                            seekToWordIndex(currentWordIndex - 1)
-                          }
+                          onClick={() => seekToWordIndex(currentWordIndex - 1)}
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
                           ← Back
                         </button>
                         <button
-                          onClick={() =>
-                            seekToWordIndex(currentWordIndex + 1)
-                          }
+                          onClick={() => seekToWordIndex(currentWordIndex + 1)}
                           className="rounded-lg border border-white/10 px-4 py-2 font-semibold text-zinc-300 transition-all hover:border-white/20 hover:bg-white/5 hover:text-white"
                         >
                           Next →
                         </button>
-                      </div>
-
-                      {/* WPM Adjustment */}
-                      <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-2">
-                        <label htmlFor="wpm" className="text-sm text-zinc-400">
-                          Speed:
-                        </label>
-                        <input
-                          id="wpm"
-                          type="range"
-                          min="100"
-                          max="500"
-                          value={wpm}
-                          onChange={(e) =>
-                            handleWpmChange(Number(e.target.value))
-                          }
-                          className="w-20 cursor-pointer"
-                        />
-                        <span className="min-w-12 text-right text-sm font-semibold text-amber-300">
-                          {wpm}
-                        </span>
                       </div>
                     </div>
                   </div>

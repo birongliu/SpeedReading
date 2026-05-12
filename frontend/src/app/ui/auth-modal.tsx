@@ -199,13 +199,13 @@ export default function AuthModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center px-4 py-6"
+      className="fixed inset-0 z-60 flex items-center justify-center px-4 py-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
     >
       <div className="absolute inset-0 bg-black/70 backdrop-blur-xl" />
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.08] bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/8 bg-[rgba(13,13,18,0.96)] p-px shadow-2xl shadow-black/60">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-amber-500/20 blur-3xl"
@@ -230,7 +230,7 @@ export default function AuthModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-zinc-400 transition-all hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 text-zinc-400 transition-all hover:border-white/20 hover:bg-white/6 hover:text-white"
               aria-label="Close auth dialog"
             >
               <svg
@@ -341,7 +341,7 @@ export default function AuthModal({
             <button
               type="submit"
               disabled={loading}
-              className="mt-2 h-12 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 hover:shadow-amber-900/55 disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-2 h-12 rounded-xl bg-linear-to-r from-amber-500 to-orange-600 text-sm font-semibold text-white shadow-xl shadow-amber-900/35 transition-all duration-200 hover:from-amber-400 hover:to-orange-500 hover:shadow-amber-900/55 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? "Please wait..." : submitLabel}
             </button>
@@ -388,13 +388,13 @@ export default function AuthModal({
                 }
               }}
               disabled={loading}
-              className="mt-3 h-12 rounded-xl border border-white/20 bg-white/[0.04] text-sm font-semibold text-white transition-all duration-200 hover:border-white/40 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-3 h-12 rounded-xl border border-white/20 bg-white/4 text-sm font-semibold text-white transition-all duration-200 hover:border-white/40 hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-70"
             >
               {loading ? "Please wait..." : "Continue as Guest"}
             </button>
           </form>
 
-          <div className="mt-5 border-t border-white/[0.06] pt-5 text-center text-sm text-zinc-500">
+          <div className="mt-5 border-t border-white/6 pt-5 text-center text-sm text-zinc-500">
             {isSignup ? (
               <>
                 Already have an account?{" "}
