@@ -92,7 +92,7 @@ export function ReadScreen({
 
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-gray-100 bg-gray-50 py-8">
         <span
-          className={`font-serif text-4xl font-medium text-gray-900 transition-opacity duration-40 ${
+          className={`font-serif text-4xl font-medium text-gray-900 transition-opacity duration-[40ms] ${
             flash ? "opacity-0" : "opacity-100"
           }`}
         >
