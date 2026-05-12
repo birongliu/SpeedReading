@@ -41,6 +41,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   const [quizSubmitting, setQuizSubmitting] = useState(false);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const sessionEndedRef = useRef(false);
+  const currentWordRef = useRef<HTMLSpanElement | null>(null);
 
   const wordsRead = words.length ? currentWordIndex + 1 : 0;
   const achievedWpm = useMemo(() => {
@@ -314,6 +315,11 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
   };
 
   useEffect(() => {
+    if (profile?.focus_mode !== "highlight") return;
+    currentWordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [currentWordIndex, profile?.focus_mode]);
+
+  useEffect(() => {
     if (isPaused || !words.length) return;
 
     const msPerWord = 60000 / wpm;
@@ -554,6 +560,7 @@ export default function ReadingSessionPage({ params }: SessionPageProps) {
                         {words.map((word, index) => (
                           <span
                             key={index}
+                            ref={index === currentWordIndex ? currentWordRef : null}
                             className={`transition-all duration-200 ${
                               index === currentWordIndex
                                 ? "scale-110"
